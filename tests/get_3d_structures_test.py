@@ -10,7 +10,7 @@ def test_smiles_to_3d_structures_by_rdkit():
     assert result.smiles == smiles
     print(result.elements)
     print(result.xyz)
-    assert (result.elements == ['C','H','H','H','H']).all()
+    assert result.elements == ['C', 'H', 'H', 'H', 'H']
     assert result.xyz.shape == (5, 3)
 
     # Raise error when given an invalid SMILES string

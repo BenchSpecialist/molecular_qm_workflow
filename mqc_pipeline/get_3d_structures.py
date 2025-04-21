@@ -41,7 +41,7 @@ def smiles_to_3d_structures_by_rdkit(smiles: str,
                 f"Failed to embed molecule for SMILES after {max_attempts} attempts: {smiles}"
             )
 
-    elements = np.array([atom.GetSymbol() for atom in mol.GetAtoms()])
+    elements = [atom.GetSymbol() for atom in mol.GetAtoms()]
     # Extract 3D coordinates
     xyz = np.zeros((mol.GetNumAtoms(), 3))
     conf = mol.GetConformer()
