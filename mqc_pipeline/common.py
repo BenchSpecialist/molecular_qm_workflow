@@ -4,15 +4,15 @@ from typing import Optional
 from ase import Atoms
 from uuid import uuid4
 
-_DEFAULT_CHARGE = 0
-_DEFAULT_MULTIPLICITY = 1
+_DEFAULT_CHARGE = 0.
+_DEFAULT_MULTIPLICITY = 1.
 _UNIQUE_KEY_LENGTH = 11
 
 
 @dataclass
 class Structure:
     """
-    Container to hold 3D information of a molecule.
+    Container to hold information of a molecule.
     """
     elements: list[str]
     xyz: np.ndarray  # shape (n_atoms, 3)
@@ -29,6 +29,8 @@ class Structure:
             self.unique_id = str(uuid4().int)[:_UNIQUE_KEY_LENGTH]
         if isinstance(self.xyz, list):
             self.xyz = np.array(self.xyz)
+        if isinstance(self.elements, np.ndarray):
+            self.elements = self.elements.tolist()
 
     def from_ase_atoms(cls, ase_atoms: Atoms):
         return cls(elements=ase_atoms.get_chemical_symbols(),
@@ -38,43 +40,33 @@ class Structure:
     def to_ase_atoms(self) -> Atoms:
         return Atoms(symbols=self.elements, positions=self.xyz)
 
-    def write_xyz(self, xyz_file_path: str):
-        """
-        Save cartesian coordinates of a molecule to an XYZ file. If any energy
-        information is available, it will be included in the comment line of the
-        XYZ file.
-
-        :param xyz_file_path: Path to the output XYZ file.
-        """
-        energy_keys = [k for k in self.property if "energy" in k]
-        energy_info = ', '.join(
-            [f"{k}: {self.property[k]:.6f} Eh"
-             for k in energy_keys]) if energy_keys else ""
-
-        with open(xyz_file_path, 'w') as xyz_file:
-            xyz_file.write(f"{len(self.elements)}\n")
-            xyz_file.write(
-                f"Optimized geometry for molecule {self.unique_id}, {energy_info}\n"
-            )
-            for element, coord in zip(self.elements, self.xyz):
-                xyz_file.write(
-                    f"{element} {coord[0]:.6f} {coord[1]:.6f} {coord[2]:.6f}\n"
-                )
-
     def __eq__(self, other):
         if not isinstance(other, Structure):
             return NotImplemented
 
         elements_equal = self.elements == other.elements
         smiles_equal = self.smiles == other.smiles
-        charge_equal = self.charge == other.charge
-        multiplicity_equal = self.multiplicity == other.multiplicity
-        property_equal = self.property == other.property
+        charge_equal = np.allclose(self.charge, other.charge)
+        multiplicity_equal = np.allclose(self.multiplicity, other.multiplicity)
+
+        # Check if properties are equal
+        if self.property is not None and other.property is not None:
+            for key in self.property:
+                if key not in other.property:
+                    return False
+                if isinstance(self.property[key], np.ndarray):
+                    if not np.allclose(self.property[key],
+                                       other.property[key]):
+                        return False
+                else:
+                    if self.property[key] != other.property[key]:
+                        return False
+
         # unique_id is not compared as the structural equality (not identity) is desired
         # Special handling for numpy array comparison
         xyz_equal = np.allclose(
-            self.xyz, other.xyz, rtol=1e-5,
-            atol=1e-8) if self.xyz.shape == other.xyz.shape else False
+            self.xyz,
+            other.xyz) if self.xyz.shape == other.xyz.shape else False
 
-        return (elements_equal and xyz_equal and property_equal
-                and smiles_equal and charge_equal and multiplicity_equal)
+        return (elements_equal and xyz_equal and smiles_equal and charge_equal
+                and multiplicity_equal)
