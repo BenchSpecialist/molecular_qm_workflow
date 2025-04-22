@@ -34,8 +34,4 @@ jobs:
 
       # Step 4: Run tests
       - name: Run pytest
-        run: pytest --maxfail=5 --disable-warnings --cov=modules --cov-report=xml
-      
-      - uses: codecov/codecov-action@v3
-        with:
-          file: coverage.xml
+        run: pytest --maxfail=5 --disable-warnings 
