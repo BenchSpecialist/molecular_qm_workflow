@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64", "wheel"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -13,14 +13,16 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     'numpy >= 1.20.0',
-    'scipy',
-    'matplotlib',
+    "scipy>=1.6.0",
     'pydantic >= 1.10',
     'PyYAML >= 6.0',
+    'h5py >= 3.0',
     'rdkit',
     'ase',
+    "pyscf==2.8.0",
+    "geometric",
 ]
-license = { text = "MIT" }
+license = {text = "MIT" }
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -38,10 +40,21 @@ RUN = "scripts.main:main" # Maps the command to the main function in modules/mai
 where = ["."]
 
 [project.optional-dependencies]
-test = ["pytest >= 6.0", "pytest-cov", "pytest-env"]
+gpu = [
+    "cupy-cuda12x>=13.0,!=13.4.0",
+    "gpu4pyscf-cuda12x>=1.4.0",
+    "gpu4pyscf-libxc-cuda12x==0.5",
+    "cutensor-cu12>=2.2.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    # "pytest-cov>=3.0.0",
+    # "pytest-env",
+]
 
 [tool.pytest.ini_options]
-addopts = "--cov=mqc_pipeline"
+# addopts = "--cov=mqc_pipeline"
+addopts = "--durations=10 --durations-min=0"
 testpaths = ["tests"]
 
 [tool.pytest.ini_options.env]
