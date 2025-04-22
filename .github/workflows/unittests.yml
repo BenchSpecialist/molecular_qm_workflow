@@ -4,11 +4,19 @@ name: Run Unit Tests
 # Here, the workflow runs on push and pull requests to the main branch.
 on:
   push:
-    branches:
-      - main
+    paths:
+      - 'mqc_pipeline/**'  # Only trigger when files in the mqc_pipeline directory are changed
+      - 'tests/**'         # Include changes to test files
+    paths-ignore:
+      - 'README.md'
+      - 'Makefile'
   pull_request:
-    branches:
-      - main
+    paths:
+      - 'mqc_pipeline/**'  # Only trigger when files in the mqc_pipeline directory are changed
+      - 'tests/**'         # Include changes to test files
+    paths-ignore:
+      - 'README.md'
+      - 'Makefile'
 
 # jobs: Defines the tasks that the workflow will execute.
 # Here, there is a single job named test.
