@@ -22,9 +22,10 @@ class Structure:
     charge: int = _DEFAULT_CHARGE
     multiplicity: int = _DEFAULT_MULTIPLICITY
     property: Optional[dict] = None
+    metadata: Optional[dict] = None
 
     def __post_init__(self):
-        # automatically generate a unique key if not provided after initialization
+        # Automatically generate a unique key if not provided after initialization
         if self.unique_id is None:
             self.unique_id = str(uuid4().int)[:_UNIQUE_KEY_LENGTH]
         if isinstance(self.xyz, list):
