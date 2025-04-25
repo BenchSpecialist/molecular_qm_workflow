@@ -20,7 +20,9 @@ dependencies = [
     'rdkit',
     'ase',
     "pyscf==2.8.0",
-    "geometric",
+    "gpu4pyscf-cuda12x",
+    "cutensor-cu12",
+
 ]
 license = {text = "MIT" }
 classifiers = [
@@ -40,12 +42,6 @@ RUN = "scripts.main:main" # Maps the command to the main function in modules/mai
 where = ["."]
 
 [project.optional-dependencies]
-gpu = [
-    "cupy-cuda12x>=13.0,!=13.4.0",
-    "gpu4pyscf-cuda12x>=1.4.0",
-    "gpu4pyscf-libxc-cuda12x==0.5",
-    "cutensor-cu12>=2.2.0",
-]
 dev = [
     "pytest>=7.0.0",
     # "pytest-cov>=3.0.0",

@@ -1,30 +1,29 @@
-# Variables
+.PHONY: all clean build install install-dev install-gpu test
+
+# Default Python executable
 PYTHON := python3
-PIP = $(PYTHON) -m pip
-PLATFORM := $(shell $(PYTHON) -c "import platform; print(platform.system().lower() + '-' + platform.machine().lower())")
 
-# Default target
-all: clean install
+all: install
 
-# Install the package in editable mode
-# This will install the package in the current environment
-install:
-	$(PIP) install -e .
+# Clean build artifacts
+clean:
+	rm -rf build/ dist/ *.egg-info/ .pytest_cache/
+	find . -name __pycache__ -type d -exec rm -rf {} +
+	find . -name "*.pyc" -delete
 
-# Install development dependencies
-dev_install:
-	$(PIP) install .[dev]
+# Install package in development mode
+install: clean
+	$(PYTHON) -m pip install -e .
+
+# Install with dev dependencies
+install-dev: clean
+	$(PYTHON) -m pip install -e ".[dev]"
+
+# Build package
+build: clean
+	$(PYTHON) -m pip install --upgrade build
+	$(PYTHON) -m build
 
 # Run tests
 test:
-	$(PYTHON) -m pytest
-
-# Remove build artifacts and caches
-clean:
-	rm -rf dist *.egg-info build .eggs
-	rm -rf .pytest_cache/ .coverage *.hdf5 *.json *.pickle *.xyz
-	find . -name "__pycache__" -type d -exec rm -rf {} +
-	find . -name "*.pyc" -delete
-
-# Declare phony targets
-.PHONY: all install dev_install test clean
+	pytest
