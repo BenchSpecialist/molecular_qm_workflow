@@ -10,20 +10,8 @@ authors = [
 ]
 description = "High-throughput molecular quantum chemistry (MQC) pipeline"
 readme = "README.md"
-requires-python = ">=3.11"
-dependencies = [
-    'numpy >= 1.20.0',
-    "scipy>=1.6.0",
-    'pydantic >= 1.10',
-    'PyYAML >= 6.0',
-    'h5py >= 3.0',
-    'rdkit',
-    'ase',
-    "pyscf==2.8.0",
-    "gpu4pyscf-cuda12x",
-    "cutensor-cu12",
-
-]
+# Dependencies are managed by environment.yml with micromamba
+dependencies = []
 license = {text = "MIT" }
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -36,7 +24,7 @@ keywords = ["quantum chemistry", "computational chemistry", "chemoinformatics"]
 homepage = "https://github.com/Solid-Energy-Systems/mqc_pipeline"
 
 [project.scripts]
-RUN = "scripts.main:main" # Maps the command to the main function in modules/main.py
+RUN = "scripts.main:run" # Maps the command to the main function in modules/main.py
 
 [tool.setuptools.packages.find]
 where = ["."]

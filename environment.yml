@@ -1,0 +1,36 @@
+name: mqc-env
+channels:
+  - conda-forge
+  - nvidia
+  - pytorch
+  - pyg
+  - defaults
+dependencies:
+  - python>=3.11
+  - numpy
+  - scipy
+  - pydantic
+  - pyyaml
+  - h5py
+  - packaging
+  - pip
+  # aimnet2calc dependencies
+  - openbabel
+  - ase
+  - autograd
+  - dask
+  - distributed
+  - fabric
+  - jinja2
+  - joblib
+  - matplotlib
+  - natsort
+  - psutil
+  - rmsd
+  - sympy
+  - scikit-learn
+  - pip:
+    - rdkit
+    - pysisyphus
+    - gpu4pyscf-cuda12x
+    - cutensor-cu12

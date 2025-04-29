@@ -1,4 +1,4 @@
-.PHONY: all clean build install install-dev install-gpu test
+.PHONY: all clean build install install-dev test
 
 # Default Python executable
 PYTHON := python3
