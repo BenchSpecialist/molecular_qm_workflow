@@ -237,16 +237,22 @@ def read_xyz(file_or_path) -> Structure:
     with open(file_or_path, 'r') as xyz_file:
         lines = xyz_file.readlines()
 
-    num_atoms = int(lines[0].strip())
+    # Extract info from comment line;
+    # currently we assume the comment line contains: unique_id, energy
     comment = lines[1].strip().split()
-    unique_id = comment[4]
-    if comment[-1] == 'Eh':
-        energy_val = comment[-2]
-        energy_key = comment[-3].rstrip(':')
+    try:
+        unique_id = comment[4]
+        if comment[-1] == 'Eh':
+            energy_val = comment[-2]
+            energy_key = comment[-3].rstrip(':')
+        property = {energy_key: energy_val}
+    except:
+        unique_id = None
+        property = None
 
     elements = []
     xyz = []
-
+    num_atoms = int(lines[0].strip())
     for line in lines[2:2 + num_atoms]:
         parts = line.split()
         elements.append(parts[0])
@@ -256,4 +262,4 @@ def read_xyz(file_or_path) -> Structure:
     return Structure(elements=elements,
                      xyz=xyz,
                      unique_id=unique_id,
-                     property={energy_key: energy_val})
+                     property=property)
