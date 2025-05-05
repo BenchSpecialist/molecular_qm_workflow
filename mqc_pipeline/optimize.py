@@ -27,10 +27,7 @@ except ImportError:
 
 from .common import Structure, COORDINATE_UNIT
 from .constants import EV_TO_HARTREE
-from .settings import ASEOption, PySCFOption
-
-### Module constants ###
-METHOD_AIMNet2 = 'aimnet2'
+from .settings import ASEOption, PySCFOption, METHOD_AIMNet2
 
 OPTIMIZER_NAME_TO_CLASS = {'BFGS': BFGS, 'FIRE': FIRE}
 
