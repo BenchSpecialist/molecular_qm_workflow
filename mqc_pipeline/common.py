@@ -1,9 +1,12 @@
 import numpy as np
+from uuid import uuid4
 from dataclasses import dataclass
 from typing import Optional
-from ase import Atoms
-from uuid import uuid4
 
+from ase import Atoms
+import pyscf
+
+COORDINATE_UNIT = 'angstrom'
 _DEFAULT_CHARGE = 0.
 _DEFAULT_MULTIPLICITY = 1.
 _UNIQUE_KEY_LENGTH = 11
@@ -33,6 +36,11 @@ class Structure:
         if isinstance(self.elements, np.ndarray):
             self.elements = self.elements.tolist()
 
+        if self.property is None:
+            self.property = {}
+        if self.metadata is None:
+            self.metadata = {}
+
     def from_ase_atoms(cls, ase_atoms: Atoms):
         return cls(elements=ase_atoms.get_chemical_symbols(),
                    xyz=ase_atoms.get_positions(),
@@ -40,6 +48,24 @@ class Structure:
 
     def to_ase_atoms(self) -> Atoms:
         return Atoms(symbols=self.elements, positions=self.xyz)
+
+    def to_pyscf_mole(self) -> 'pyscf.M':
+        """
+        Convert the Structure object to a PySCF Mole object.
+
+        :return: a `pyscf.gto.mole.Mole` object representing the structure.
+        """
+
+        atom_str = '\n'.join(f'{el} {x} {y} {z}'
+                             for el, (x, y, z) in zip(self.elements, self.xyz))
+        mol = pyscf.M(
+            atom=atom_str,
+            # The minimal `sto-3g` basis is set by default when basis is not specified.
+            charge=self.charge,
+            spin=self.multiplicity - 1,
+            # Note that: mol.spin = 2S = Nalpha - Nbeta (not multiplicity=2S+1)
+            unit=COORDINATE_UNIT)
+        return mol
 
     def __eq__(self, other):
         if not isinstance(other, Structure):

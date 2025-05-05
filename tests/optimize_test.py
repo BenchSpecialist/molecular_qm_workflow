@@ -2,9 +2,11 @@ import numpy as np
 import pytest
 
 from mqc_pipeline import optimize, Structure
+import platform
 
 
 @pytest.mark.slow
+@pytest.mark.skipif(platform.system() != "Linux", reason="Only runs on Linux")
 def test_optimize_by_pyscf():
     xyz_before = [[0.0, 0.0, 0.0], [0.0, 0.0, 3.0]]
     st = Structure(elements=['H', 'H'],

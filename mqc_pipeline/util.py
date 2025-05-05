@@ -29,7 +29,8 @@ def timer(func):
             execution_time = end_time - start_time
 
             # Print profiling information
-            print(f"{func.__name__}: {execution_time:.4f} seconds")
+            print(
+                f"\nProfiled `{func.__name__}`: {execution_time:.4f} seconds")
 
         # Return the original function's result
         return result
