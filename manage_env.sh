@@ -4,8 +4,15 @@
 set -e
 
 ENV_NAME="mqc-env"
-ENV_DIR="$HOME/$ENV_NAME"
-ENV_FILE="$HOME/mqc_pipeline/environment.yml"
+
+# Used on fluidstack
+DEV_DIR="/mnt/filesystem/dev_renkeh"
+ENV_DIR="$DEV_DIR/$ENV_NAME"
+ENV_FILE="$DEV_DIR/mqc_pipeline/environment.yml"
+
+# Used on osc
+# ENV_DIR="$HOME/$ENV_NAME"
+# ENV_FILE="$HOME/mqc_pipeline/environment.yml"
 
 # Function to display usage information
 function show_usage {
