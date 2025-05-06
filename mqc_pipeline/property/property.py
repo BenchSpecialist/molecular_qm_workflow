@@ -8,9 +8,9 @@ except ImportError:
     print("GPU4PySCF not available, falling back to normal CPU PySCF.\n")
     from pyscf.dft import rks
 
-from .common import Structure, COORDINATE_UNIT
-from .constants import HARTREE_TO_EV, ANGSTROM_TO_BOHR
-from .settings import PySCFOption
+from ..common import Structure, COORDINATE_UNIT
+from ..constants import HARTREE_TO_EV, ANGSTROM_TO_BOHR
+from ..settings import PySCFOption
 
 
 def get_properties_by_pyscf(st: Structure,
