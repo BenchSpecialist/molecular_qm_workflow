@@ -30,7 +30,9 @@ def get_properties_by_pyscf(st: Structure,
     """
     mol = st.to_pyscf_mole()
     mol.basis = options.basis
+    mol.build()
 
+    # TODO: use uks for anions, radicals.
     mf = rks.RKS(mol, xc=options.dft_functional).density_fit()
     mf.max_cycle = options.max_scf_cycle
     mf.conv_tol = options.scf_conv_tol

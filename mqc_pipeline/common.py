@@ -3,6 +3,7 @@ from uuid import uuid4
 from dataclasses import dataclass
 from typing import Optional
 
+from rdkit import Chem
 from ase import Atoms
 import pyscf
 
@@ -12,7 +13,7 @@ _DEFAULT_MULTIPLICITY = 1.
 _UNIQUE_KEY_LENGTH = 11
 
 
-@dataclass
+@dataclass(slots=True)  # eliminates the __dict__ to reduce memory overhead
 class Structure:
     """
     Container to hold information of a molecule.
@@ -49,7 +50,7 @@ class Structure:
     def to_ase_atoms(self) -> Atoms:
         return Atoms(symbols=self.elements, positions=self.xyz)
 
-    def to_pyscf_mole(self) -> 'pyscf.M':
+    def to_pyscf_mole(self) -> 'pyscf.gto.mole.Mole':
         """
         Convert the Structure object to a PySCF Mole object.
 
@@ -65,6 +66,27 @@ class Structure:
             spin=self.multiplicity - 1,
             # Note that: mol.spin = 2S = Nalpha - Nbeta (not multiplicity=2S+1)
             unit=COORDINATE_UNIT)
+        return mol
+
+    def to_rdkit_mol(self) -> 'Chem.Mol':
+        """
+        Convert the Structure object to an RDKit Mol object.
+
+        :return: an `rdkit.Chem.Mol` object representing the structure.
+        """
+        # Create an XYZ block from elements and xyz coordinates
+        xyz_block = "\n".join(
+            f"{el} {x:.f} {y:.f} {z:.f}"
+            for el, (x, y, z) in zip(self.elements, self.xyz)) # yapf:disable
+
+        # Create a molecule from the XYZ block
+        mol = Chem.MolFromXYZBlock(xyz_block, sanitize=False)
+        if mol is None:
+            raise ValueError("Failed to create RDKit Mol from XYZ block.")
+
+        # Resolve bonding info based on coordinates
+        Chem.rdDetermineBonds.DetermineConnectivity(mol)
+
         return mol
 
     def __eq__(self, other):

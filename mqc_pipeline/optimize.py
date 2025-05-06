@@ -113,6 +113,8 @@ def optimize_by_pyscf(st: Structure, options: PySCFOption) -> Structure:
     # Setup molecule
     mol = st.to_pyscf_mole()
     mol.basis = options.basis
+    # Refresh internal data of Mole object when modifying its attribute.
+    mol.build()
 
     # Setup Kohn-Sham DFT object
     mf = rks.RKS(mol, xc=options.dft_functional).density_fit()

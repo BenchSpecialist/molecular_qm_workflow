@@ -1,8 +1,8 @@
+import platform
 import numpy as np
 import pytest
 
 from mqc_pipeline import optimize, Structure
-import platform
 
 
 @pytest.mark.slow
