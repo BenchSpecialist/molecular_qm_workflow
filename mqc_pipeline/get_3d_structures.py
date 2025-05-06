@@ -1,6 +1,7 @@
+import numpy as np
 from rdkit import Chem
 from rdkit.Chem import AllChem
-import numpy as np
+from rdkit.Chem.rdMolTransforms import GetBondLength
 
 from .common import Structure
 
@@ -41,10 +42,23 @@ def smiles_to_3d_structures_by_rdkit(smiles: str,
                 f"Failed to embed molecule for SMILES after {max_attempts} attempts: {smiles}"
             )
 
-    elements = [atom.GetSymbol() for atom in mol.GetAtoms()]
-    # Extract 3D coordinates
-    xyz = np.zeros((mol.GetNumAtoms(), 3))
+    # Get conformer with 3D coordinates
     conf = mol.GetConformer()
+
+    # Check if the RDKit-generated geometry is physical:
+    # bond distances should be in the range of 0.5 angstrom ~ 3 angstrom
+    bond_distances = [
+        GetBondLength(conf, bond.GetBeginAtomIdx(), bond.GetEndAtomIdx())
+        for bond in mol.GetBonds()
+    ]
+    if any(distance < 0.5 or distance > 3.0 for distance in bond_distances):
+        raise ValueError(
+            f"Unphysical bond distances in the RDKit-generated 3D structure for {smiles}."
+        )
+
+    # Extract coordinates
+    elements = [atom.GetSymbol() for atom in mol.GetAtoms()]
+    xyz = np.zeros((mol.GetNumAtoms(), 3))
     for i, atom in enumerate(mol.GetAtoms()):
         pos = conf.GetAtomPosition(atom.GetIdx())
         xyz[i] = [pos.x, pos.y, pos.z]
