@@ -19,7 +19,7 @@ _DEFAULT_SCF_CONV_TOL = 1e-09  # default: 1e-09 in pyscf
 _DEFAULT_GRIDS_LEVEL = 3  # default: 3 in pyscf
 
 
-@dataclass
+@dataclass(slots=True)
 class ASEOption:
     """
     Configuration options for ASE backend.
@@ -33,7 +33,7 @@ class ASEOption:
     max_cycle: int = 1000
 
 
-@dataclass
+@dataclass(slots=True)
 class PySCFOption:
     """
     Configuration options for PySCF backend.
@@ -52,6 +52,20 @@ class PySCFOption:
     max_scf_cycle: int = _DEFAULT_SCF_MAX_CYCLE
     scf_conv_tol: float = _DEFAULT_SCF_CONV_TOL
     grids_level: int = _DEFAULT_GRIDS_LEVEL
+
+
+@dataclass(slots=True)
+class ESPGridsOption:
+    """
+    Configuration options for ESP grid generation.
+
+    :param solvent_accessible_region: Solvent accessible region for ESP calculations in angstrom.
+    :param grid_spacing: Grid spacing for ESP calculations in angstrom.
+    :param probe_depth: Probe depth for ESP calculations in angstrom.
+    """
+    solvent_accessible_region: float = 3.0
+    grid_spacing: float = 0.5
+    probe_depth: float = 1.1
 
 
 class PipelineSettings(BaseModel):
@@ -151,6 +165,17 @@ class PipelineSettings(BaseModel):
                            max_scf_cycle=self.pyscf_max_scf_cycle,
                            scf_conv_tol=self.pyscf_scf_conv_tol,
                            grids_level=self.pyscf_grids_level)
+
+    def to_esp_grids_options(self) -> ESPGridsOption:
+        """
+        Convert configuration settings to ESPGridsOption.
+
+        :return: An ESPGridsOption object with settings from this configuration.
+        """
+        return ESPGridsOption(
+            solvent_accessible_region=self.esp_solvent_accessible_region,
+            grid_spacing=self.esp_grid_spacing,
+            probe_depth=self.esp_probe_depth)
 
     @classmethod
     def write_default_config_to_yaml(cls, yaml_path: str | Path) -> None:
