@@ -4,13 +4,19 @@ from pydantic import BaseModel, Field, field_validator
 from dataclasses import dataclass
 
 ### Module constants ###
-METHOD_AIMNet2 = 'aimnet2'
-METHOD_DFT = 'dft'
+METHOD_AIMNet2 = 'AIMNET2'
+METHOD_DFT = 'DFT'
 SUPPORTED_GEOMETRY_OPT_METHODS = [METHOD_AIMNet2, METHOD_DFT]
 
 BFGS_OPTIMIZER = "BFGS"
 FIRE_OPTIMIZER = "FIRE"
 SUPPORTED_ASE_OPTIMIZERS = (BFGS_OPTIMIZER, FIRE_OPTIMIZER)
+
+_DEFAULT_BASIS = '6311g*'
+_DEFAULT_FUNCTIONAL = 'b3lypg'
+_DEFAULT_SCF_MAX_CYCLE = 100  # default: 50 in pyscf
+_DEFAULT_SCF_CONV_TOL = 1e-09  # default: 1e-09 in pyscf
+_DEFAULT_GRIDS_LEVEL = 3  # default: 3 in pyscf
 
 
 @dataclass
@@ -36,13 +42,16 @@ class PySCFOption:
     :param basis: Basis set to use.
     :param max_scf_cycle: Maximum number of SCF iterations allowed.
     :param scf_conv_tol: SCF convergence tolerance.
-    :param grids_level: Level of grid refinement for numerical integration.
+    :param grids_level: Level of grid refinement for numerical integration used
+                        in DFT to evaluate the exchange-correlation energy and
+                        potential. This setting is DFT-relevant, and not used for
+                        wavefunction-based methods like Hartree-Fock, MP2 or CCSD.
     """
-    basis: str = '6311g*'
-    dft_functional: str = 'b3lypg'
-    max_scf_cycle: int = 100  # default: 50 in pyscf
-    scf_conv_tol: float = 1e-09  # default: 1e-09 in pyscf
-    grids_level: int = 3  # default: 3 in pyscf
+    basis: str = _DEFAULT_BASIS
+    dft_functional: str = _DEFAULT_FUNCTIONAL
+    max_scf_cycle: int = _DEFAULT_SCF_MAX_CYCLE
+    scf_conv_tol: float = _DEFAULT_SCF_CONV_TOL
+    grids_level: int = _DEFAULT_GRIDS_LEVEL
 
 
 class PipelineSettings(BaseModel):
@@ -51,11 +60,11 @@ class PipelineSettings(BaseModel):
     """
     # Required settings
     geometry_opt_method: str = Field(
-        default="dft", description="Method for geometry optimization.")
+        default=METHOD_DFT, description="Method for geometry optimization.")
 
     @field_validator('geometry_opt_method')
     def validate_geometry_opt_method(cls, method: str) -> str:
-        if method.lower() not in SUPPORTED_GEOMETRY_OPT_METHODS:
+        if method.upper() not in SUPPORTED_GEOMETRY_OPT_METHODS:
             raise ValueError(
                 f"Unsupported geometry optimization method: {method}. Supported methods are: {', '.join(SUPPORTED_GEOMETRY_OPT_METHODS)}"
             )
@@ -76,28 +85,35 @@ class PipelineSettings(BaseModel):
 
     ## PySCF related fields: used in geometry optimization when geometry_opt_method is 'dft',
     ## and in the property calculations
-    pyscf_basis: str = Field(default="6311g*",
+    pyscf_basis: str = Field(default=_DEFAULT_BASIS,
                              description="Basis set for PySCF calculations")
     pyscf_functional: str = Field(
-        default="b3lypg", description="DFT functional for PySCF calculations")
+        default=_DEFAULT_FUNCTIONAL,
+        description="DFT functional for PySCF calculations")
     pyscf_max_scf_cycle: int = Field(
-        default=500, description="Maximum number of SCF iterations allowed")
-    pyscf_scf_conv_tol: float = Field(default=1e-09,
+        default=_DEFAULT_SCF_MAX_CYCLE,
+        description="Maximum number of SCF iterations allowed")
+    pyscf_scf_conv_tol: float = Field(default=_DEFAULT_SCF_CONV_TOL,
                                       description="SCF convergence tolerance")
     pyscf_grids_level: int = Field(
-        default=3,
+        default=_DEFAULT_GRIDS_LEVEL,
         description="Level of grid refinement for numerical integration")
+    # TODO: need to evaluate if this option is needed, if so, create separate module
+    # for conformer sampling
     pyscf_save_fock: bool = Field(
         default=False, description="Whether to save the Fock matrix")
 
     ## Settings for ESP grid generation
     esp_solvent_accessible_region: float = Field(
         default=3.0,
-        description="Solvent accessible region for ESP calculations in Å")
+        description="Solvent accessible region for ESP calculations in angstrom"
+    )
     esp_grid_spacing: float = Field(
-        default=0.5, description="Grid spacing for ESP calculations in Å")
+        default=0.5,
+        description="Grid spacing for ESP calculations in angstrom")
     esp_probe_depth: float = Field(
-        default=1.1, description="Probe depth for ESP calculations in Å")
+        default=1.1,
+        description="Probe depth for ESP calculations in angstrom")
 
     @field_validator('ase_optimizer_name')
     def validate_ase_optimizer(cls, optimizer: str) -> str:

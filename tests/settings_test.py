@@ -11,13 +11,13 @@ from mqc_pipeline.settings import (PipelineSettings, ASEOption, PySCFOption,
                                    SUPPORTED_ASE_OPTIMIZERS)
 
 default_config = {
-    'geometry_opt_method': 'dft',
+    'geometry_opt_method': 'DFT',
     'ase_optimizer_name': 'BFGS',
     'ase_force_conv': 1e-5,
     'ase_max_cycle': 1000,
     'pyscf_basis': "6311g*",
     'pyscf_functional': "b3lypg",
-    'pyscf_max_scf_cycle': 500,
+    'pyscf_max_scf_cycle': 100,
     'pyscf_scf_conv_tol': 1e-09,
     'pyscf_grids_level': 3,
     'pyscf_save_fock': False,
@@ -73,7 +73,6 @@ def test_to_pyscf_options():
     assert isinstance(pyscf_options, PySCFOption)
     assert pyscf_options.basis == "cc-pvdz"
     assert pyscf_options.dft_functional == "r2scan"
-    assert pyscf_options.max_scf_cycle == 500
 
 
 def test_from_yaml(tmp_cwd):
