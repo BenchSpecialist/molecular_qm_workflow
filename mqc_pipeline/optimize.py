@@ -19,11 +19,11 @@ assert version.parse(
 
 try:
     # check if GPU4PySCF is available
-    from gpu4pyscf.dft import rks
+    from gpu4pyscf.dft import rks, uks
     print("Using GPU-accelerated PySCF.\n")
 except ImportError:
     print("GPU4PySCF not available, falling back to normal CPU PySCF.\n")
-    from pyscf.dft import rks
+    from pyscf.dft import rks, uks
 
 from .common import Structure, COORDINATE_UNIT
 from .constants import EV_TO_HARTREE
@@ -100,7 +100,9 @@ def _is_gpu4pyscf_compatible() -> bool:
         return False
 
 
-def optimize_by_pyscf(st: Structure, options: PySCFOption) -> Structure:
+def optimize_by_pyscf(st: Structure,
+                      options: PySCFOption,
+                      save_metadata: bool = False) -> Structure:
     """
     Optimize the geometry of a molecule using PySCF backend.
 
@@ -117,7 +119,11 @@ def optimize_by_pyscf(st: Structure, options: PySCFOption) -> Structure:
     mol.build()
 
     # Setup Kohn-Sham DFT object
-    mf = rks.RKS(mol, xc=options.dft_functional).density_fit()
+    if st.multiplicity == 1:  # closed-shell
+        mf = rks.RKS(mol, xc=options.dft_functional).density_fit()
+    else:
+        mf = uks.UKS(mol, xc=options.dft_functional).density_fit()
+
     mf.max_cycle = options.max_scf_cycle
     mf.conv_tol = options.scf_conv_tol
     mf.grids.level = options.grids_level
@@ -140,8 +146,9 @@ def optimize_by_pyscf(st: Structure, options: PySCFOption) -> Structure:
     if st.metadata is None:
         st.metadata = {}
     st.metadata['dft_opt_time'] = time.perf_counter() - opt_start
-    st.metadata['dft_opt_energies'] = energies
-    st.metadata['dft_opt_gradients'] = gradients
+    if save_metadata:
+        st.metadata['dft_opt_energies'] = energies
+        st.metadata['dft_opt_gradients'] = gradients
 
     if not is_converged:
         raise RuntimeError(

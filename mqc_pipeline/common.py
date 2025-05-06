@@ -64,7 +64,7 @@ class Structure:
             # The minimal `sto-3g` basis is set by default when basis is not specified.
             charge=self.charge,
             spin=self.multiplicity - 1,
-            # Note that: mol.spin = 2S = Nalpha - Nbeta (not multiplicity=2S+1)
+            # Note that: mol.spin = 2S = Nalpha - Nbeta = unpaired_electrons (multiplicity=2S+1)
             unit=COORDINATE_UNIT)
         return mol
 

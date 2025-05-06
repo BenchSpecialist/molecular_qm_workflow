@@ -63,4 +63,14 @@ def smiles_to_3d_structures_by_rdkit(smiles: str,
         pos = conf.GetAtomPosition(atom.GetIdx())
         xyz[i] = [pos.x, pos.y, pos.z]
 
-    return Structure(elements=elements, xyz=xyz, smiles=smiles)
+    # Compute the number of unpaired electrons
+    unpaired_electrons = sum(atom.GetNumRadicalElectrons()
+                             for atom in mol.GetAtoms())
+    # Compute the charge
+    charge = Chem.GetFormalCharge(mol)
+
+    return Structure(elements=elements,
+                     xyz=xyz,
+                     smiles=smiles,
+                     charge=charge,
+                     multiplicity=unpaired_electrons + 1)

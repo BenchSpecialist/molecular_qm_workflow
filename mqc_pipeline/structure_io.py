@@ -12,8 +12,6 @@ from typing import Union, BinaryIO, TextIO, Iterable
 
 from .common import Structure
 
-__all__ = ['write', 'read']
-
 # Type aliases
 StructureType = Union[Structure, Iterable[Structure]]
 FileLikeType = Union[str, Path, TextIO, BinaryIO]
