@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -26,21 +27,33 @@ def smiles_to_3d_structures_by_rdkit(smiles: str,
     # Add H atoms to the molecule
     mol = Chem.AddHs(mol)
 
+    params = AllChem.ETKDGv3()
+    # With fixed seed, the generated coordinates are reproducible, assuming:
+    # 1. The same version of RDKit; 2. Same input SMILES (with consistent atom ordering)
+    # 3. No other sources of nondeterminism, like inconsistent hydrogen handling
+    # The value of randomSeed can affect the success rate of EmbedMolecule, which
+    # uses a distance geometry algorithm that samples random initial coordinates
+    # guided by distance bounds, where the random number generator is used.
+    params.randomSeed = 42
+
     # Embed the molecule
     for attempt in range(max_attempts):
-        if AllChem.EmbedMolecule(mol, AllChem.ETKDGv3()) == 0:
+        if AllChem.EmbedMolecule(mol, params) == 0:
             break
-        # If we failed once, try disabling chirality
-        ps = AllChem.ETKDGv3()
-        ps.enforceChirality = False
-        if AllChem.EmbedMolecule(mol, ps) == 0:
-            print(f"Success after disabling chirality for {smiles}")
-            ps.enforceChirality = True  # Re-enable to let the next molecule try chirality
+
+        # Within the same attempt, try disabling chirality if embedding fails
+        # due to chirality constraints.
+        params.enforceChirality = False
+        if AllChem.EmbedMolecule(mol, params) == 0:
+            logging.info(
+                f"Embedding succeeded after disabling chirality: {smiles}")
+            # Reset the chirality flag for the next attempt
+            params.enforceChirality = True
             break
+
         if attempt == max_attempts - 1:
             raise ValueError(
-                f"Failed to embed molecule for SMILES after {max_attempts} attempts: {smiles}"
-            )
+                f"Failed to embed after {max_attempts} attempts: {smiles}")
 
     # Get conformer with 3D coordinates
     conf = mol.GetConformer()

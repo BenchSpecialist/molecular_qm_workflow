@@ -17,7 +17,7 @@ install: clean
 	$(PYTHON) -m pip install -e .
 
 # Install with dev dependencies
-install-dev: clean
+install-dev:
 	$(PYTHON) -m pip install -e ".[dev]"
 
 # Build package
