@@ -3,13 +3,12 @@ import subprocess
 from functools import wraps
 
 
-def gpu_available():
+def has_nvidia_gpu():
     try:
-        output = subprocess.check_output("nvidia-smi", shell=True).decode()
-        print("GPU is available:\n", output)
-        return True
-    except subprocess.CalledProcessError:
-        print("No GPU available or NVIDIA drivers not installed")
+        # Check if 'nvidia-smi' command is available and outputs something
+        result = subprocess.run(["nvidia-smi"], capture_output=True, text=True)
+        return result.returncode == 0 and len(result.stdout) > 0
+    except FileNotFoundError:
         return False
 
 

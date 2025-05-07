@@ -26,7 +26,7 @@ except ImportError:
     from pyscf.dft import rks, uks
 
 from .common import Structure, COORDINATE_UNIT
-from .constants import EV_TO_HARTREE
+from .constants import EV_TO_HARTREE, DFT_ENERGY_KEY, DFT_FORCES_KEY
 from .settings import ASEOption, PySCFOption, METHOD_AIMNet2
 
 OPTIMIZER_NAME_TO_CLASS = {'BFGS': BFGS, 'FIRE': FIRE}
@@ -161,8 +161,8 @@ def optimize_by_pyscf(st: Structure,
         st.property = {}
 
     st.property = {
-        "energy_hartree": float(energies[-1]),
-        "forces": gradients[-1].tolist(),
+        DFT_ENERGY_KEY: float(energies[-1]),
+        DFT_FORCES_KEY: gradients[-1].tolist(),
     }
 
     return st
