@@ -5,10 +5,11 @@ PYTHON := python3
 
 all: install
 
-# Clean build artifacts
+# Clean build and other artifacts
 clean:
 	rm -rf build/ dist/ *.egg-info/ .pytest_cache/
 	find . -name __pycache__ -type d -exec rm -rf {} +
+	find . -name .ruff_cache -type d -exec rm -rf {} +
 	find . -name "*.pyc" -delete
 
 # Install package in development mode
