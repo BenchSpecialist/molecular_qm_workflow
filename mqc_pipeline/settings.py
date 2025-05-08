@@ -73,16 +73,18 @@ class PipelineSettings(BaseModel):
     Frontend schema for the pipeline settings.
     """
     # Required settings
+    input_file_or_dir: str = Field(
+        description=
+        "Path to a text/csv file that contains a single column of smiles strings. "
+        "Alternatively, a directory containing multiple xyz files.")
+
+    num_gpus: int = Field(
+        default=1,
+        description="Number of GPUs to use for the calculations. Default is 1."
+    )
+
     geometry_opt_method: str = Field(
         default=METHOD_DFT, description="Method for geometry optimization.")
-
-    @field_validator('geometry_opt_method')
-    def validate_geometry_opt_method(cls, method: str) -> str:
-        if method.upper() not in SUPPORTED_GEOMETRY_OPT_METHODS:
-            raise ValueError(
-                f"Unsupported geometry optimization method: {method}. Supported methods are: {', '.join(SUPPORTED_GEOMETRY_OPT_METHODS)}"
-            )
-        return method
 
     # Optional settings
     ## ASE related fields: used only when geometry_opt_method is 'aimnet2'
@@ -129,21 +131,6 @@ class PipelineSettings(BaseModel):
         default=1.1,
         description="Probe depth for ESP calculations in angstrom")
 
-    @field_validator('ase_optimizer_name')
-    def validate_ase_optimizer(cls, optimizer: str) -> str:
-        """
-        Validates that the ASE optimizer name is one of the supported values.
-
-        :param v: The optimizer name to validate.
-        :return: The validated optimizer name.
-        :raises ValueError: If the optimizer name is not supported.
-        """
-        if optimizer not in SUPPORTED_ASE_OPTIMIZERS:
-            raise ValueError(
-                f"Unsupported ASE optimizer: {optimizer}. Supported optimizers are: {', '.join(SUPPORTED_ASE_OPTIMIZERS)}"
-            )
-        return optimizer
-
     def to_ase_options(self) -> ASEOption:
         """
         Convert configuration settings to ASEOption.
@@ -180,23 +167,27 @@ class PipelineSettings(BaseModel):
     @classmethod
     def write_default_config_to_yaml(cls, yaml_path: str | Path) -> None:
         """
-        Write the default config YAML file.
+        Write the default config YAML file with descriptions as comments.
         """
         with open(yaml_path, "w") as file:
             file.write(cls._get_default_settings_yaml_string())
 
     @classmethod
-    def _get_default_settings_yaml_string(cls):
+    def _get_default_settings_yaml_string(cls) -> str:
         """
-        Get the default settings to a YAML string.
+        Get the default settings as a YAML string with descriptions as comments.
         """
         schema = cls.schema()
-        default_strings = []
+        yaml_lines = []
         for key, val_dict in schema["properties"].items():
-            default_value = val_dict.get("default", ' ')
-            default_strings.append(f"{key}: {default_value}")
+            description = val_dict.get("description", "")
+            default_value = val_dict.get("default", " ")
+            if description:
+                yaml_lines.append(f"# {description}")
+            yaml_lines.append(f"{key}: {default_value}")
+            yaml_lines.append("")  # Add a blank line for readability
 
-        return "\n".join(default_strings)
+        return "\n".join(yaml_lines)
 
     @classmethod
     def from_yaml(cls, yaml_path: str | Path) -> "PipelineSettings":
@@ -211,3 +202,50 @@ class PipelineSettings(BaseModel):
             config_dict = yaml.safe_load(fhandle)
         # Validate and parse using the Pydantic model
         return cls(**config_dict)
+
+    @field_validator('input_file_or_dir')
+    def validate_input(cls, input_file_or_dir: str) -> str:
+        input_file_or_dir = Path(input_file_or_dir)
+        # Check file extension
+        if input_file_or_dir.is_file():
+            if input_file_or_dir.suffix not in ['.txt', '.csv']:
+                raise ValueError(
+                    "Input file must be a .txt or .csv file containing a single column of smiles strings."
+                )
+        elif input_file_or_dir.is_dir():
+            # Check if the directory contains any xyz files
+            if not any(input_file_or_dir.glob("*.xyz")):
+                raise ValueError(
+                    "Directory must contain at least one .xyz file.")
+        else:
+            raise ValueError(
+                "Input must be a valid .txt, .csv file or directory containing xyz files."
+            )
+        # Check existence of the file or directory
+        if not input_file_or_dir.exists():
+            raise ValueError(
+                f"Input file or directory does not exist: {input_file_or_dir}")
+        return input_file_or_dir
+
+    @field_validator('geometry_opt_method')
+    def validate_geometry_opt_method(cls, method: str) -> str:
+        if method.upper() not in SUPPORTED_GEOMETRY_OPT_METHODS:
+            raise ValueError(
+                f"Unsupported geometry optimization method: {method}. Supported methods are: {', '.join(SUPPORTED_GEOMETRY_OPT_METHODS)}"
+            )
+        return method
+
+    @field_validator('ase_optimizer_name')
+    def validate_ase_optimizer(cls, optimizer: str) -> str:
+        """
+        Validates that the ASE optimizer name is one of the supported values.
+
+        :param v: The optimizer name to validate.
+        :return: The validated optimizer name.
+        :raises ValueError: If the optimizer name is not supported.
+        """
+        if optimizer not in SUPPORTED_ASE_OPTIMIZERS:
+            raise ValueError(
+                f"Unsupported ASE optimizer: {optimizer}. Supported optimizers are: {', '.join(SUPPORTED_ASE_OPTIMIZERS)}"
+            )
+        return optimizer
