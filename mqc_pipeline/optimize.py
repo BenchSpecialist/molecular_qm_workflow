@@ -1,5 +1,5 @@
 import time
-
+import logging
 from packaging import version
 
 # Imports for ASE backend
@@ -8,8 +8,8 @@ try:
     from aimnet2calc import AIMNet2ASE
 except ImportError:
     AIMNet2ASE = None
-    print("AIMNet2 calculator is not available. "
-          "Please install the required package.")
+    logging.info("AIMNet2 calculator is not available. "
+                 "Please install the required package.")
 
 # Imports for pyscf backend
 import pyscf
@@ -20,13 +20,14 @@ assert version.parse(
 try:
     # check if GPU4PySCF is available
     from gpu4pyscf.dft import rks, uks
-    print("Using GPU-accelerated PySCF.\n")
+    logging.info("Using GPU-accelerated PySCF.\n")
 except ImportError:
-    print("GPU4PySCF not available, falling back to normal CPU PySCF.\n")
+    logging.info(
+        "GPU4PySCF not available, falling back to normal CPU PySCF.\n")
     from pyscf.dft import rks, uks
 
 from .common import Structure, COORDINATE_UNIT
-from .constants import EV_TO_HARTREE, DFT_ENERGY_KEY, DFT_FORCES_KEY
+from .constants import EV_TO_HARTREE, DFT_ENERGY_KEY
 from .settings import ASEOption, PySCFOption, METHOD_AIMNet2
 
 OPTIMIZER_NAME_TO_CLASS = {'BFGS': BFGS, 'FIRE': FIRE}
@@ -136,16 +137,14 @@ def optimize_by_pyscf(st: Structure,
         gradients.append(envs['gradients'])
 
     # Optimize geometry with geomeTRIC library
-    opt_start = time.perf_counter()
+    t_start = time.perf_counter()
     is_converged, mol_optimized = geometric_solver.kernel(
         mf,
         callback=callback,
         maxsteps=500,  # default:100
     )
     # Save optimization time to metadata
-    if st.metadata is None:
-        st.metadata = {}
-    st.metadata['dft_opt_time'] = time.perf_counter() - opt_start
+    st.metadata['dft_opt_duration'] = time.perf_counter() - t_start
     if save_metadata:
         st.metadata['dft_opt_energies'] = energies
         st.metadata['dft_opt_gradients'] = gradients
@@ -154,6 +153,8 @@ def optimize_by_pyscf(st: Structure,
         raise RuntimeError(
             f"Geometry optimization did not converge for molecule {st.unique_id} with SMILES {st.smiles}"
         )
+    logging.info(
+        f"{st.smiles} (id={st.unique_id}): Geometry optimization converged.")
 
     # Update the input structure with the optimized coordinates
     st.xyz = mol_optimized.atom_coords(unit=COORDINATE_UNIT)

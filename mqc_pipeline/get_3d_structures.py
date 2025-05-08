@@ -1,3 +1,4 @@
+import time
 import logging
 import numpy as np
 from rdkit import Chem
@@ -20,6 +21,7 @@ def smiles_to_3d_structures_by_rdkit(smiles: str,
 
     :raises ValueError: If the SMILES string is invalid or if embedding fails.
     """
+    t_start = time.perf_counter()
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         raise ValueError(f"Invalid SMILES string: {smiles}")
@@ -39,6 +41,7 @@ def smiles_to_3d_structures_by_rdkit(smiles: str,
     # Embed the molecule
     for attempt in range(max_attempts):
         if AllChem.EmbedMolecule(mol, params) == 0:
+            logging.info(f"Embedding succeeded: {smiles}")
             break
 
         # Within the same attempt, try disabling chirality if embedding fails
@@ -82,8 +85,14 @@ def smiles_to_3d_structures_by_rdkit(smiles: str,
     # Compute the charge
     charge = Chem.GetFormalCharge(mol)
 
+    metadata = {
+        "rdkit_duration": time.perf_counter() - t_start,
+        "rdkit_attempts": attempt + 1,
+    }
+
     return Structure(elements=elements,
                      xyz=xyz,
                      smiles=smiles,
                      charge=charge,
-                     multiplicity=unpaired_electrons + 1)
+                     multiplicity=unpaired_electrons + 1,
+                     metadata=metadata)

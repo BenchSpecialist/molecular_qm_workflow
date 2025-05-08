@@ -1,3 +1,5 @@
+import time
+import logging
 from gpu4pyscf.dft import rks, uks
 from gpu4pyscf.qmmm import chelpg
 
@@ -25,6 +27,7 @@ def get_properties_neutral(st: Structure,
     :return: Structure object with populated `property` attribute.
     """
     assert st.charge == 0, "This function is for neutral molecules only."
+    t_start = time.perf_counter()
 
     mol = st.to_pyscf_mole()
     mol.basis = pyscf_options.basis
@@ -73,4 +76,7 @@ def get_properties_neutral(st: Structure,
     chelpg_charges = chelpg.eval_chelpg_layer_gpu(mf).get()
     st.save_charges(chelpg_charges, prop_key='chelpg_charge')
 
+    st.metadata['dft_prop_calc_duration'] = time.perf_counter() - t_start
+    logging.info(
+        f"{st.smiles} (id={st.unique_id}): Property calculations done.")
     return st
