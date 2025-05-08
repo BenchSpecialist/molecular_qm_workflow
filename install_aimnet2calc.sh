@@ -15,7 +15,8 @@ micromamba activate $ENV_DIR
 # Three dependencies (pytorch, pytorch-cuda, pytorch-cluster) need separate installation
 # as libmamba raises `Could not solve for environment specs` error when configuring
 # in environment.yml
-micromamba install -y pytorch pytorch-cuda=12.1 -c pytorch -c nvidia
+# CUDA Version: 12.4 for fluidstack cluster
+micromamba install -y pytorch pytorch-cuda=12.4 -c pytorch -c nvidia
 micromamba install -y pytorch-cluster -c pyg
 
 # Clone and install aimnet2calc

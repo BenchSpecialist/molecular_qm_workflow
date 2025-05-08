@@ -27,13 +27,13 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'  # Specify the Python version
+          python-version: '3.12'  # Specify the Python version
 
       # Step 3: Install the package in editable mode (.) along with test dependencies
       # defined in pyproject.toml
       - name: Install dependencies
-        run: pip install .[dev]
+        run: pip install .[gh_test]
 
       # Step 4: Run tests
       - name: Run pytest
-        run: pytest --maxfail=5 --disable-warnings 
+        run: pytest --maxfail=5 --disable-warnings
