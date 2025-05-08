@@ -3,7 +3,7 @@ import numpy as np
 from mqc_pipeline import structure_io
 
 
-@pytest.mark.parametrize("file_format", ["json", "pickle", "hdf5", "xyz"])
+@pytest.mark.parametrize("file_format", ["json", "pickle", "xyz"])
 def test_single_structure(file_format, methane_st, tmp_cwd):
     file_path = f"one_st.{file_format}"
 
@@ -24,7 +24,7 @@ def test_single_structure(file_format, methane_st, tmp_cwd):
         assert methane_st == structure_loaded
 
 
-@pytest.mark.parametrize("file_format", ["json", "pickle", "hdf5"])
+@pytest.mark.parametrize("file_format", ["json", "pickle"])
 def test_multiple_structures(file_format, methane_st, n2_st, tmp_cwd):
     file_path = f"multi_sts.{file_format}"
 

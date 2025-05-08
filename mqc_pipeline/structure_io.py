@@ -16,7 +16,7 @@ from .common import Structure
 StructureType = Union[Structure, Iterable[Structure]]
 FileLikeType = Union[str, Path, TextIO, BinaryIO]
 
-SUPPORTED_FORMATS = ['json', 'pickle', 'hdf5', 'xyz']
+SUPPORTED_FORMATS = ['json', 'pickle', 'xyz']
 
 
 def write(structures: StructureType,
@@ -27,7 +27,7 @@ def write(structures: StructureType,
 
     :param structures: A single Structure object or an iterable of Structure objects
     :param file_or_path: Path to output file or file-like object
-    :param format: Format to serialize to ('json', 'pickle', 'hdf5', 'xyz')
+    :param format: Format to serialize to ('json', 'pickle', 'xyz')
 
     :raises ValueError: If the format is not supported
     """
@@ -39,8 +39,6 @@ def write(structures: StructureType,
         write_json(structures, file_or_path)
     if format == 'pickle':
         write_pickle(structures, file_or_path)
-    if format == 'hdf5':
-        write_hdf5(structures, file_or_path)
     if format == 'xyz':
         write_xyz(structures, file_or_path)
 
@@ -50,7 +48,7 @@ def read(file_or_path: FileLikeType, format: str = 'json') -> StructureType:
     Read one or multiple Structure object(s) from a file in the given format.
 
     :param file_or_path: Path to input file or file-like object
-    :param format: Format to deserialize from ('json', 'pickle', 'hdf5', 'xyz')
+    :param format: Format to deserialize from ('json', 'pickle', 'xyz')
     """
     format = format.lower()
     if format not in SUPPORTED_FORMATS:
@@ -61,8 +59,6 @@ def read(file_or_path: FileLikeType, format: str = 'json') -> StructureType:
         return read_json(file_or_path)
     if format == 'pickle':
         return read_pickle(file_or_path)
-    if format == 'hdf5':
-        return read_hdf5(file_or_path)
     if format == 'xyz':
         return read_xyz(file_or_path)
 
@@ -121,89 +117,6 @@ def read_pickle(file_or_path: FileLikeType) -> StructureType:
             return pickle.load(fhandle)
     else:
         return pickle.load(file_or_path)
-
-
-def write_hdf5(structures: StructureType, file_or_path):
-    with h5py.File(file_or_path, 'w') as h5fhandle:
-        if isinstance(structures, Structure):
-            # Single structure
-            _write_one_st_to_h5(structures, h5fhandle)
-        else:
-            # Collection of structures
-            for st in structures:
-                group = h5fhandle.create_group(f"structure_{st.unique_id}")
-                _write_one_st_to_h5(st, group)
-
-
-def _write_one_st_to_h5(structure: Structure, h5group: h5py.Group):
-    """
-    Helper method to write a single structure to an HDF5 group.
-    """
-    h5group.create_dataset('elements',
-                           data=np.array(structure.elements, dtype='S10'))
-    h5group.create_dataset('xyz', data=structure.xyz)
-
-    if structure.atomic_numbers:
-        h5group.create_dataset('atomic_numbers', data=structure.atomic_numbers)
-
-    # Save attributes
-    h5group.attrs['smiles'] = structure.smiles or ''
-    h5group.attrs['unique_id'] = structure.unique_id
-    h5group.attrs['charge'] = structure.charge
-    h5group.attrs['multiplicity'] = structure.multiplicity
-
-    # Save properties as a group
-    if structure.property:
-        prop_group = h5group.create_group('property')
-        for key, value in structure.property.items():
-            prop_group.create_dataset(key, data=value)
-
-
-def read_hdf5(file_or_path) -> Structure:
-    with h5py.File(file_or_path, 'r') as h5fhandle:
-        # Check if it's a list or single structure
-        st_group_keys = [
-            k for k in h5fhandle.keys() if k.startswith('structure_')
-        ]
-        if len(st_group_keys) > 0:
-            # multple structures
-            structures = []
-            for key in st_group_keys:
-                group = h5fhandle[key]
-                structures.append(_read_one_st_from_h5(group))
-            return structures
-        else:
-            # for single structure
-            return _read_one_st_from_h5(h5fhandle)
-
-
-def _read_one_st_from_h5(h5group: h5py.Group) -> Structure:
-    """
-    Helper method to read a single structure from an HDF5 group.
-    """
-    elements = h5group['elements'][:].astype(str).tolist()
-    xyz = h5group['xyz'][:]
-    atomic_numbers = h5group['atomic_numbers'][:].tolist(
-    ) if 'atomic_numbers' in h5group else None
-
-    # Load attributes
-    attrs = dict(h5group.attrs)
-    smiles = attrs.get('smiles', None)
-    unique_id = attrs['unique_id']
-    charge = float(attrs['charge'])
-    multiplicity = float(attrs['multiplicity'])
-
-    # Load properties
-    property_dict = {}
-    if 'property' in h5group:
-        prop_group = h5group['property']
-        for key, value in prop_group.items():
-            # Note: `shape == ()` for Scalar dataset
-            property_dict[key] = value[()] if value.shape == (
-            ) else value[:].tolist()
-
-    return Structure(elements, xyz, atomic_numbers, smiles, unique_id, charge,
-                     multiplicity, property_dict)
 
 
 def write_xyz(structure: Structure, file_or_path):
