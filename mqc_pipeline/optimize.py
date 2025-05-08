@@ -65,14 +65,14 @@ def optimize_by_aimnet2(st: Structure, options: ASEOption) -> Structure:
 
     # Update the input structure with the optimized geometry
     st.xyz = ase_atoms.get_positions()
-    st.property = {
-        f"{METHOD_AIMNet2}_energy_hartree":
-        float(ase_atoms.get_potential_energy()) * EV_TO_HARTREE,
-        f"{METHOD_AIMNet2}_charges":
-        ase_atoms.calc.results.get('charges', None),
-        f"{METHOD_AIMNet2}_forces":
-        ase_atoms.get_forces().tolist(),
-    }
+
+    # Save the AIMNet2 energy and forces of the optimized geometry
+    st.property[f"{METHOD_AIMNet2}_energy_hartree"] = float(
+        ase_atoms.get_potential_energy()) * EV_TO_HARTREE
+    st.save_gradients(ase_atoms.get_forces(),
+                      prop_key=f"{METHOD_AIMNet2}_forces")
+    st.save_charges(ase_atoms.calc.results.get('charges', None),
+                    prop_key=f"{METHOD_AIMNet2}_charges")
 
     if st.atomic_numbers is None:
         st.atomic_numbers = ase_atoms.get_atomic_numbers().tolist()
@@ -157,12 +157,9 @@ def optimize_by_pyscf(st: Structure,
 
     # Update the input structure with the optimized coordinates
     st.xyz = mol_optimized.atom_coords(unit=COORDINATE_UNIT)
-    if st.property is None:
-        st.property = {}
 
-    st.property = {
-        DFT_ENERGY_KEY: float(energies[-1]),
-        DFT_FORCES_KEY: gradients[-1].tolist(),
-    }
+    # Save the energy and forces of the optimized geometry
+    st.property[DFT_ENERGY_KEY] = float(energies[-1])
+    st.save_gradients(gradients[-1])
 
     return st

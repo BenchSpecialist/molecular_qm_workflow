@@ -7,6 +7,8 @@ from rdkit import Chem
 from ase import Atoms
 import pyscf
 
+from .constants import DFT_FORCES_KEY
+
 COORDINATE_UNIT = 'angstrom'
 _DEFAULT_CHARGE = 0.
 _DEFAULT_MULTIPLICITY = 1.
@@ -25,8 +27,9 @@ class Structure:
     unique_id: Optional[str] = None
     charge: int = _DEFAULT_CHARGE
     multiplicity: int = _DEFAULT_MULTIPLICITY
-    property: Optional[dict] = None
-    metadata: Optional[dict] = None
+    property: Optional[dict] = None  # save molecule-level properties
+    atom_property: Optional[list] = None  # save atom-level properties
+    metadata: Optional[dict] = None  # save timings, optimization info, etc.
 
     def __post_init__(self):
         # Automatically generate a unique key if not provided after initialization
@@ -39,8 +42,33 @@ class Structure:
 
         if self.property is None:
             self.property = {}
+        if self.atom_property is None:
+            # Initialize atom_property and add atom symbol
+            self.atom_property = [
+                {'element': atom_symbol}
+                for atom_symbol in self.elements] #yapf:disable
         if self.metadata is None:
             self.metadata = {}
+
+    def save_gradients(self,
+                       gradients_arr: np.ndarray,
+                       prop_key: str = DFT_FORCES_KEY):
+        """
+        Save array that contains gradients for all atoms into per-atom dictionary
+        :param gradients_arr: (n_atoms, 3) shape, gradients of each atom along x, y, z
+        """
+        for i, _ in enumerate(self.elements):
+            self.atom_property[i][prop_key] = gradients_arr[i].tolist()
+
+    def save_charges(self, charges_arr: np.ndarray, prop_key: str):
+        """
+        Save array that contains charges for all atoms into per-atom dictionary
+        :param charges_arr: (n_atoms,) shape, one charge value for each atom
+        :param prop_key: key to save the charge value; charges computed with different
+                         methods can be saved with different keys
+        """
+        for i, _ in enumerate(self.elements):
+            self.atom_property[i][prop_key] = float(charges_arr[i])
 
     def from_ase_atoms(cls, ase_atoms: Atoms):
         return cls(elements=ase_atoms.get_chemical_symbols(),

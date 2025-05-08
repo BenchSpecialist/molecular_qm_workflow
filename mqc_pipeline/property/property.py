@@ -31,7 +31,7 @@ def get_properties_neutral(st: Structure,
     mol.build()
 
     # Setup Kohn-Sham DFT object
-    if st.multiplicity == 1: # closed-shell
+    if st.multiplicity == 1:  # closed-shell
         mf = rks.RKS(mol, xc=pyscf_options.dft_functional).density_fit()
     else:
         mf = uks.UKS(mol, xc=pyscf_options.dft_functional).density_fit()
@@ -54,7 +54,9 @@ def get_properties_neutral(st: Structure,
 
     # Compute one-body reduced density matrix for dipole, electrostatic potential calculations
     rdm1 = mf.make_rdm1()
-    st.property['dipole_moment_debye'] = mf.dip_moment(unit='Debye', dm=rdm1).tolist()
+    st.property['dipole_x_debye'], st.property['dipole_y_debye'], st.property[
+        'dipole_z_debye'] = mf.dip_moment(unit='Debye', dm=rdm1).tolist()
+
     # Generate grids for ESP calculations
     grids = generate_esp_grids(mol,
                                rcut=esp_options.solvent_accessible_region,
@@ -64,14 +66,11 @@ def get_properties_neutral(st: Structure,
         mol, grids, one_rdm=rdm1)
 
     if return_gradient:
-        gradient = mf.Gradients().kernel()
-        st.property["forces"] = gradient.tolist()
+        gradients_arr = mf.Gradients().kernel()
+        st.save_gradients(gradients_arr)
 
     # Evaluate CHELPG charges and transfers data from GPU (cupy) to CPU (numpy)
     chelpg_charges = chelpg.eval_chelpg_layer_gpu(mf).get()
-    st.property['chelpg_charges'] = [
-        # type: (atom_symbol: string, charge: float)
-        (mol.atom_symbol(i), float(chelpg_charges[i])) for i in range(mol.natm)
-    ]
+    st.save_charges(chelpg_charges, prop_key='chelpg_charge')
 
     return st
