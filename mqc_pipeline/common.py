@@ -23,8 +23,8 @@ class Structure:
     atomic_numbers: Optional[list[int]] = None
     smiles: Optional[str] = None
     unique_id: Optional[str] = None
-    charge: float = _DEFAULT_CHARGE
-    multiplicity: float = _DEFAULT_MULTIPLICITY
+    charge: int = _DEFAULT_CHARGE
+    multiplicity: int = _DEFAULT_MULTIPLICITY
     property: Optional[dict] = None
     metadata: Optional[dict] = None
 

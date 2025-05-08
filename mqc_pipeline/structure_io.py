@@ -1,16 +1,16 @@
 """
 Module for writing and reading Structure object(s) to/from various file formats.
 """
-
+import re
 import json
 import pickle
-import h5py
 import numpy as np
 from pathlib import Path
 from dataclasses import asdict
 from typing import Union, BinaryIO, TextIO, Iterable
 
 from .common import Structure
+from .constants import DFT_ENERGY_KEY
 
 # Type aliases
 StructureType = Union[Structure, Iterable[Structure]]
@@ -119,24 +119,22 @@ def read_pickle(file_or_path: FileLikeType) -> StructureType:
         return pickle.load(file_or_path)
 
 
-def write_xyz(structure: Structure, file_or_path):
+def write_xyz(st: Structure, file_or_path):
     """
     Save cartesian coordinates of one Structure to an XYZ file. If any energy
     information is available, it will be included in the comment line of the
     XYZ file.
     """
-    energy_keys = [k for k in structure.property
-                   if "energy" in k] if structure.property else []
-    energy_info = ', '.join(
-        [f"{k}: {structure.property[k]:.6f} Eh"
-         for k in energy_keys]) if energy_keys else ""
+    energy_info = ""
+    if dft_energy := st.property.get(DFT_ENERGY_KEY, None):
+        energy_info = f"{DFT_ENERGY_KEY}:{dft_energy}"
+
+    comment_line = f"{st.smiles} unique_id:{st.unique_id} charge:{st.charge} multiplicity:{st.multiplicity} {energy_info}\n"
 
     with open(file_or_path, 'w') as xyz_file:
-        xyz_file.write(f"{len(structure.elements)}\n")
-        xyz_file.write(
-            f"Optimized geometry for molecule {structure.unique_id} {energy_info}\n"
-        )
-        for element, coord in zip(structure.elements, structure.xyz):
+        xyz_file.write(f"{len(st.elements)}\n")
+        xyz_file.write(comment_line)
+        for element, coord in zip(st.elements, st.xyz):
             xyz_file.write(
                 f"{element} {coord[0]:.6f} {coord[1]:.6f} {coord[2]:.6f}\n")
 
@@ -148,18 +146,33 @@ def read_xyz(file_or_path) -> Structure:
     with open(file_or_path, 'r') as xyz_file:
         lines = xyz_file.readlines()
 
-    # Extract info from comment line;
-    # currently we assume the comment line contains: unique_id, energy
-    comment = lines[1].strip().split()
-    try:
-        unique_id = comment[4]
-        if comment[-1] == 'Eh':
-            energy_val = comment[-2]
-            energy_key = comment[-3].rstrip(':')
-        property = {energy_key: energy_val}
-    except:
-        unique_id = None
-        property = None
+    # Example comment line:
+    # B(=O)OB=O unique_id:54355245865 charge:0 multiplicity:1 energy_hartree:-275.62039364954484
+    comment_line = lines[1].strip()
+
+    # Initialize default values
+    smiles = ""
+    unique_id = None
+    charge = 0
+    multiplicity = 1
+    property = {}
+
+    # Look for key patterns in the comment line
+    if "unique_id:" in comment_line:
+        # Extract SMILES (everything before 'unique_id:')
+        smiles = comment_line.split("unique_id:")[0].strip()
+
+    if uid_match := re.search(r"unique_id:\s*(\S+)", comment_line):
+        unique_id = uid_match.group(1)
+    if charge_match := re.search(r"charge:\s*(-?\d+)", comment_line):
+        charge = int(charge_match.group(1))
+    if multiplicity_match := re.search(r"multiplicity:\s*(\d+)", comment_line):
+        multiplicity = int(multiplicity_match.group(1))
+
+    if dft_energy_match := re.search(
+            r"energy_hartree:\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)",
+            comment_line):
+        property[DFT_ENERGY_KEY] = float(dft_energy_match.group(1))
 
     elements = []
     xyz = []
@@ -173,4 +186,7 @@ def read_xyz(file_or_path) -> Structure:
     return Structure(elements=elements,
                      xyz=xyz,
                      unique_id=unique_id,
+                     smiles=smiles,
+                     charge=charge,
+                     multiplicity=multiplicity,
                      property=property)
