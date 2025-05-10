@@ -1,5 +1,6 @@
 import time
 import logging
+import numpy as np
 from gpu4pyscf.dft import rks, uks
 from gpu4pyscf.qmmm import chelpg
 
@@ -8,6 +9,41 @@ from ..constants import HARTREE_TO_EV
 from ..settings import PySCFOption, ESPGridsOption
 
 from .esp import generate_esp_grids, get_esp_range
+
+
+def _is_scf_done(mf_obj) -> bool:
+    """
+    Check if the SCF calculation is done.
+
+    :param mf_obj: PySCF mean-field object.
+    """
+    return mf_obj.e_tot != 0
+
+
+def get_quadrupole_moment(
+        mf_obj, rdm1) -> tuple[float, float, float, float, float, float]:
+    """
+    Calculate the quadrupole moment of a molecule.
+
+    :param mol: PySCF Mole object.
+    :param rdm1: One-body reduced density matrix.
+
+    :return: Quadrupole moment components (Qxx, Qyy, Qzz, Qxy).
+    """
+    if _is_scf_done(mf_obj):
+        raise RuntimeError(
+            "Quadrupole cal error: No SCF calculation performed. Please run SCF first."
+        )
+
+    # PySCF returns the traceless quadrupole moment as a full symmetric matrix;
+    # only upper or lower triangle is needed
+    quad_moment = mf_obj.quad_moment(unit='DebyeAngstrom', dm=rdm1)
+    qxx, qyy, qzz = [float(val) for val in np.diag(quad_moment)]
+    qxy = float(quad_moment[0, 1])
+    qxz = float(quad_moment[0, 2])
+    qyz = float(quad_moment[1, 2])
+
+    return qxx, qyy, qzz, qxy, qxz, qyz
 
 
 def get_properties_neutral(st: Structure,
