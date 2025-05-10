@@ -8,4 +8,4 @@ logging.basicConfig(filename='pipeline.log',
 
 from .common import Structure
 from .structure_io import *
-from .get_3d_structures import smiles_to_3d_structures_by_rdkit
+from .smiles_util import smiles_to_3d_structures_by_rdkit
