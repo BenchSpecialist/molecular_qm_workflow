@@ -1,11 +1,16 @@
 import time
 import logging
 import numpy as np
+from pathlib import Path
+
+import pyscf
 from rdkit import Chem
 from rdkit.Chem import AllChem
+from rdkit.Chem import rdDetermineBonds
 from rdkit.Chem.rdMolTransforms import GetBondLength
 
-from .common import Structure
+from .common import Structure, get_unpaired_electrons
+from .adaptors import get_adaptor
 
 MAX_ATTEMPTS_EMBED = 100
 
@@ -79,12 +84,6 @@ def smiles_to_3d_structures_by_rdkit(smiles: str,
         pos = conf.GetAtomPosition(atom.GetIdx())
         xyz[i] = [pos.x, pos.y, pos.z]
 
-    # Compute the number of unpaired electrons
-    unpaired_electrons = sum(atom.GetNumRadicalElectrons()
-                             for atom in mol.GetAtoms())
-    # Compute the charge
-    charge = Chem.GetFormalCharge(mol)
-
     metadata = {
         "rdkit_duration": time.perf_counter() - t_start,
         "rdkit_attempts": attempt + 1,
@@ -93,6 +92,32 @@ def smiles_to_3d_structures_by_rdkit(smiles: str,
     return Structure(elements=elements,
                      xyz=xyz,
                      smiles=smiles,
-                     charge=charge,
-                     multiplicity=unpaired_electrons + 1,
+                     charge=Chem.GetFormalCharge(mol),
+                     multiplicity=1 + get_unpaired_electrons(mol),
                      metadata=metadata)
+
+
+def get_canonical_smiles(input) -> str:
+    """
+    Convert a 3D structure to a canonical SMILES string using RDKit.
+    Supported input types (contains coordinates) included:
+        - XYZ file
+        - Structure object
+        - rdkit.Chem.Mol object
+        - pyscf.gto.mole.Mole object
+    """
+    if isinstance(input, str) and Path(input).suffix == ".xyz":
+        rdkit_mol = Chem.MolFromXYZFile(input)
+        # Generate bonding information based on coordinates
+        # xyz file doesn't have charge info
+        rdDetermineBonds.DetermineConnectivity(rdkit_mol)
+    else:
+        try:
+            # Get adaptor based on the input type
+            adaptor = get_adaptor(input)
+        except Exception:
+            raise RuntimeError(f"Unsupported input type: {type(input)}. ")
+        # Convert to RDKit Mol object, remove H atoms for canonical SMILES
+        rdkit_mol = adaptor.to_rdkit_mol(remove_hydrogens=True)
+
+    return Chem.CanonSmiles(Chem.MolToSmiles(rdkit_mol))

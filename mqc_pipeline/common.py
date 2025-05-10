@@ -109,36 +109,6 @@ class Structure:
             unit=COORDINATE_UNIT)
         return mol
 
-    def to_rdkit_mol(self, remove_hydrogens=False) -> 'Chem.rdchem.Mol':
-        """
-        Convert the Structure object to an RDKit Mol object.
-        Note that the total formal charge is lost in this conversion, as RDKit
-        doesn't allow setting the total formal charge for the whole molecule in
-        a global way unless per-atom partial charges are set. So:
-        `Chem.GetFormalCharge(converted_mol) != self.charge`
-
-        :param remove_hydrogens: Whether to remove hydrogens from the molecule.
-                                 The canonical SMILES string will not have H atoms
-        :return: an `rdkit.Chem.Mol` object representing the structure.
-        """
-        # Create an XYZ block from elements and xyz coordinates
-        xyz_block = f"{len(self.elements)}\n\n" + "\n".join(
-            f"{el} {x} {y} {z}"
-            for el, (x, y, z) in zip(self.elements, self.xyz)) # yapf:disable
-
-        # Create a molecule from the XYZ block
-        mol = Chem.MolFromXYZBlock(xyz_block)
-        if mol is None:
-            raise ValueError("Failed to create RDKit Mol from XYZ block.")
-
-        # Resolve bonding info based on coordinates
-        rdDetermineBonds.DetermineConnectivity(mol, charge=self.charge)
-
-        if remove_hydrogens:
-            return Chem.RemoveHs(mol)
-
-        return mol
-
     def __eq__(self, other):
         if not isinstance(other, Structure):
             return NotImplemented
@@ -171,34 +141,9 @@ class Structure:
                 and multiplicity_equal)
 
 
-def rdkit_mol_to_pyscf_mole(mol: 'Chem.rdchem.Mol',
-                            basis: str) -> 'pyscf.gto.mole.Mole':
+def get_unpaired_electrons(mol: Chem.Mol) -> int:
     """
-    Convert an RDKit Mol object (contains hydrogen) to a PySCF Mole object.
-
-    :param mol: An RDKit Mol object.
-    :param basis: The basis set to be used for the PySCF calculation.
-
-    :return: a `pyscf.gto.mole.Mole` object representing the structure.
-    """
-    atom_str = Chem.MolToXYZBlock(mol).split("\n\n")[-1]
-    # Empty string when the input conformer has no conformer
-    if not atom_str:
-        raise ValueError(
-            "Input RDKit molecule has no conformer and cannot be written to XYZ block."
-        )
-
-    pyscf_mole = pyscf.M(atom=atom_str,
-                         basis=basis,
-                         charge=Chem.GetFormalCharge(mol),
-                         spin=get_unpaired_electrons_from_rdkit_mol(mol),
-                         unit=COORDINATE_UNIT)
-    return pyscf_mole
-
-
-def get_unpaired_electrons_from_rdkit_mol(mol: Chem.Mol) -> int:
-    """
-    Compute the number of unpaired electrons in a molecule.
+    Compute the number of unpaired electrons in a RDKit molecule.
 
     :param mol: The input RDKit molecule.
 
