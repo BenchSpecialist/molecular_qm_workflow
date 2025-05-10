@@ -35,7 +35,7 @@ gh_test = [
     "pytest>=7.0.0",
     "numpy >= 1.20.0",
     "scipy>=1.6.0",
-    "pandas>=2.2.3", 
+    "pandas>=2.2.3",
     'pydantic >= 1.10',
     'PyYAML >= 6.0',
     'h5py >= 3.0',
@@ -47,6 +47,16 @@ gh_test = [
 dev = [
     "pytest>=7.0.0",
 ]
+# Example use: pip install .[cuda]
+cuda = [
+    # Compatible with CUDA Version: 12.4
+    "torch==2.6.0",
+    "torchvision==0.21.0",
+    "torchaudio==2.6.0",
+]
+
+[tool.pip]
+extra-index-url = "https://download.pytorch.org/whl/cu124"
 
 [tool.pytest.ini_options]
 addopts = "--durations=10 --durations-min=0"
