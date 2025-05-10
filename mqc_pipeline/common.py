@@ -1,3 +1,12 @@
+"""
+This module contains:
+- Structure class: A container for molecular structures, including methods for
+  conversion to and from different formats (ASE, RDKit, PySCF). It's the central
+  data structure for the pipeline, which save calculated geometries, properties
+  and metadata.
+- Functions for converting between RDKit and PySCF representations.
+"""
+
 import numpy as np
 from uuid import uuid4
 from dataclasses import dataclass
@@ -153,3 +162,30 @@ class Structure:
 
         return (elements_equal and xyz_equal and smiles_equal and charge_equal
                 and multiplicity_equal)
+
+
+def rdkit_mol_to_pyscf_mole(mol: 'Chem.rdchem.Mol',
+                            basis: str) -> 'pyscf.gto.mole.Mole':
+    """
+    Convert an RDKit Mol object (contains hydrogen) to a PySCF Mole object.
+
+    :param mol: An RDKit Mol object.
+    :param basis: The basis set to be used for the PySCF calculation.
+
+    :return: a `pyscf.gto.mole.Mole` object representing the structure.
+    """
+    conf = mol.GetConformer()
+    atom_strings = []
+    for atom in mol.GetAtoms():
+        x, y, z = conf.GetAtomPosition(atom.GetIdx())
+        atom_strings.append(f'{atom.GetSymbol()} {x} {y} {z}')
+
+    atom_str = "\n".join(atom_strings)
+
+    pyscf_mole = pyscf.M(atom=atom_str,
+                         basis=basis,
+                         charge=Chem.GetFormalCharge(mol),
+                         spin=sum(atom.GetNumRadicalElectrons()
+                                  for atom in mol.GetAtoms()),
+                         unit=COORDINATE_UNIT)
+    return pyscf_mole
