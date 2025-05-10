@@ -115,10 +115,7 @@ def optimize_by_pyscf(st: Structure,
              the equilibrium geometry are saved in the `property` attribute.
     """
     # Setup molecule
-    mol = st.to_pyscf_mole()
-    mol.basis = options.basis
-    # Refresh internal data of Mole object when modifying its attribute.
-    mol.build()
+    mol = st.to_pyscf_mole(basis=options.basis)
 
     # Setup Kohn-Sham DFT object
     if st.multiplicity == 1:  # closed-shell

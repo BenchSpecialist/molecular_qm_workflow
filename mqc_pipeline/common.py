@@ -78,10 +78,11 @@ class Structure:
     def to_ase_atoms(self) -> Atoms:
         return Atoms(symbols=self.elements, positions=self.xyz)
 
-    def to_pyscf_mole(self) -> 'pyscf.gto.mole.Mole':
+    def to_pyscf_mole(self, basis: str) -> 'pyscf.gto.mole.Mole':
         """
         Convert the Structure object to a PySCF Mole object.
 
+        :param basis: The basis set to be used for the PySCF calculation.
         :return: a `pyscf.gto.mole.Mole` object representing the structure.
         """
 
@@ -89,17 +90,19 @@ class Structure:
                              for el, (x, y, z) in zip(self.elements, self.xyz))
         mol = pyscf.M(
             atom=atom_str,
-            # The minimal `sto-3g` basis is set by default when basis is not specified.
+            basis=basis,
             charge=self.charge,
             spin=self.multiplicity - 1,
             # Note that: mol.spin = 2S = Nalpha - Nbeta = unpaired_electrons (multiplicity=2S+1)
             unit=COORDINATE_UNIT)
         return mol
 
-    def to_rdkit_mol(self) -> 'Chem.Mol':
+    def to_rdkit_mol(self, remove_hydrogens=False) -> 'Chem.rdchem.Mol':
         """
         Convert the Structure object to an RDKit Mol object.
 
+        :param remove_hydrogens: Whether to remove hydrogens from the molecule.
+                                 The canonical SMILES string will not have H atoms
         :return: an `rdkit.Chem.Mol` object representing the structure.
         """
         # Create an XYZ block from elements and xyz coordinates
@@ -114,6 +117,9 @@ class Structure:
 
         # Resolve bonding info based on coordinates
         Chem.rdDetermineBonds.DetermineConnectivity(mol)
+
+        if remove_hydrogens:
+            return Chem.RemoveHs(mol)
 
         return mol
 

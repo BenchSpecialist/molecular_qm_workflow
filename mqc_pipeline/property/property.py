@@ -29,9 +29,7 @@ def get_properties_neutral(st: Structure,
     assert st.charge == 0, "This function is for neutral molecules only."
     t_start = time.perf_counter()
 
-    mol = st.to_pyscf_mole()
-    mol.basis = pyscf_options.basis
-    mol.build()
+    mol = st.to_pyscf_mole(basis=pyscf_options.basis)
 
     # Setup Kohn-Sham DFT object
     if st.multiplicity == 1:  # closed-shell
