@@ -33,8 +33,9 @@ where = ["."]
 # temporary restore the old dependencies list for GH unittests workflow
 gh_test = [
     "pytest>=7.0.0",
-    'numpy >= 1.20.0',
+    "numpy >= 1.20.0",
     "scipy>=1.6.0",
+    "pandas>=2.2.3", 
     'pydantic >= 1.10',
     'PyYAML >= 6.0',
     'h5py >= 3.0',
