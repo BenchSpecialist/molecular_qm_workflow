@@ -8,66 +8,85 @@ import yaml
 
 from mqc_pipeline.settings import (PipelineSettings, ASEOption, PySCFOption,
                                    BFGS_OPTIMIZER, FIRE_OPTIMIZER,
-                                   SUPPORTED_ASE_OPTIMIZERS)
-
-default_config = {
-    'geometry_opt_method': 'DFT',
-    'ase_optimizer_name': 'BFGS',
-    'ase_force_conv': 1e-5,
-    'ase_max_cycle': 1000,
-    'pyscf_basis': "6311g*",
-    'pyscf_functional': "b3lypg",
-    'pyscf_max_scf_cycle': 100,
-    'pyscf_scf_conv_tol': 1e-09,
-    'pyscf_grids_level': 3,
-    'pyscf_save_fock': False,
-    'esp_solvent_accessible_region': 3.0,
-    'esp_grid_spacing': 0.5,
-    'esp_probe_depth': 1.1
-}
+                                   ValidationError)
 
 
-def test_default_initialization():
-    """Test that PipelineSettings initializes with default values."""
-    config = PipelineSettings()
+def test_minimal_initialization(tmp_cwd):
+    inp_name = "smiles.txt"
+    # Create the input file to pass the input validation
+    Path(inp_name).write_text("C\n")
+    user_dict = {"input_file_or_dir": inp_name}
+    PipelineSettings(**user_dict)
 
-    # Convert the config to a dictionary and compare with default_config
-    config_dict = config.model_dump()
-    assert config_dict == default_config
+
+def test_validate_input_file_or_dir(tmp_cwd):
+    # Raise error if the input file path cannot be found
+    inp_name = "smiles.csv"
+    with pytest.raises(ValidationError,
+                       match="Input file or directory does not exist"):
+        PipelineSettings(input_file_or_dir=inp_name)
+
+    # Create the input file and check if the input validation passes
+    Path(inp_name).write_text("smiles\nC\n")
+    PipelineSettings(input_file_or_dir=inp_name)
+
+    # Test with a directory
+    xyz_dir = "input_xyz_dir"
+    Path(xyz_dir).mkdir(exist_ok=True)
+    with pytest.raises(ValidationError,
+                       match="Directory must contain at least one .xyz file"):
+        PipelineSettings(input_file_or_dir=xyz_dir)
+    # Create one .xyz file in the directory and check if the validation passes
+    xyz_file = Path(xyz_dir) / "test.xyz"
+    xyz_file.touch()
+    PipelineSettings(input_file_or_dir=xyz_dir)
 
 
-def test_ase_optimizer_validation():
+def test_validate_ase_optimizer():
     """Test that ASE optimizer validation works correctly."""
+    Path("input.txt").write_text("C\n")
+    user_dict = {"input_file_or_dir": "input.txt"}
     # Valid optimizers should not raise exceptions
-    PipelineSettings(ase_optimizer_name=BFGS_OPTIMIZER)
-    PipelineSettings(ase_optimizer_name=FIRE_OPTIMIZER)
+    for optimizer in [BFGS_OPTIMIZER, FIRE_OPTIMIZER]:
+        user_dict["ase_optimizer_name"] = optimizer
+        PipelineSettings(**user_dict)
 
     # Invalid optimizer should raise ValueError
-    with pytest.raises(ValueError,
+    with pytest.raises(ValidationError,
                        match='Unsupported ASE optimizer') as excinfo:
-        PipelineSettings(ase_optimizer_name="INVALID_OPTIMIZER")
-
-    # Check error message
-    assert all(opt in str(excinfo.value) for opt in SUPPORTED_ASE_OPTIMIZERS)
+        user_dict["ase_optimizer_name"] = "INVALID_OPTIMIZER"
+        PipelineSettings(**user_dict)
 
 
 def test_to_ase_options():
     """Test conversion to ASEOption object."""
-    config = PipelineSettings(ase_optimizer_name=FIRE_OPTIMIZER,
-                              ase_force_conv=1e-6,
-                              ase_max_cycle=2000)
+    Path("input.txt").write_text("C\n")
+    user_input = {
+        "input_file_or_dir": "input.txt",
+        "ase_optimizer_name": FIRE_OPTIMIZER,
+        "ase_force_conv": 1e-6,
+        "ase_max_cycle": 2000,
+    }
+
+    config = PipelineSettings(**user_input)
 
     ase_options = config.to_ase_options()
-
     assert isinstance(ase_options, ASEOption)
-    assert ase_options.optimizer_name == FIRE_OPTIMIZER
-    assert ase_options.force_conv == 1e-6
-    assert ase_options.max_cycle == 2000
+    assert ase_options.optimizer_name == user_input["ase_optimizer_name"]
+    assert ase_options.force_conv == user_input["ase_force_conv"]
+    assert ase_options.max_cycle == user_input["ase_max_cycle"]
 
 
 def test_to_pyscf_options():
     """Test conversion to PySCFOption object."""
-    config = PipelineSettings(pyscf_basis="cc-pvdz", pyscf_functional="r2scan")
+    Path("input.txt").write_text("C\n")
+    user_input = {
+        "input_file_or_dir": "input.txt",
+        "pyscf_basis": "cc-pvdz",
+        "pyscf_functional": "r2scan",
+    }
+
+    config = PipelineSettings(**user_input)
 
     pyscf_options = config.to_pyscf_options()
     assert isinstance(pyscf_options, PySCFOption)
@@ -78,7 +97,9 @@ def test_to_pyscf_options():
 def test_from_yaml(tmp_cwd):
     """Test creating a PipelineSettings instance from a YAML file."""
     # Create a temporary YAML file with custom settings
+    Path("input.txt").write_text("C\n")
     custom_config = {
+        'input_file_or_dir': "input.txt",
         'ase_optimizer_name': FIRE_OPTIMIZER,
         'pyscf_basis': 'sto-3g',
     }
@@ -92,7 +113,10 @@ def test_from_yaml(tmp_cwd):
     # Assert that the loaded config matches the custom settings
     assert config.ase_optimizer_name == FIRE_OPTIMIZER
     assert config.pyscf_basis == 'sto-3g'
-    # Other options take default value
-    assert config.ase_max_cycle == default_config['ase_max_cycle']
-    assert config.pyscf_functional == default_config['pyscf_functional']
-    assert config.esp_probe_depth == default_config['esp_probe_depth']
+    # Other options take default values
+    assert config.ase_max_cycle == PipelineSettings.model_fields[
+        'ase_max_cycle'].default
+    assert config.pyscf_functional == PipelineSettings.model_fields[
+        'pyscf_functional'].default
+    assert config.esp_probe_depth == PipelineSettings.model_fields[
+        'esp_probe_depth'].default

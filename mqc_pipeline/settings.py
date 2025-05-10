@@ -3,6 +3,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field, field_validator
 from dataclasses import dataclass
 
+from .file_util import is_csv_single_column, is_txt_single_column
+
 ### Module constants ###
 METHOD_AIMNet2 = 'AIMNET2'
 METHOD_DFT = 'DFT'
@@ -17,6 +19,10 @@ _DEFAULT_FUNCTIONAL = 'b3lypg'
 _DEFAULT_SCF_MAX_CYCLE = 100  # default: 50 in pyscf
 _DEFAULT_SCF_CONV_TOL = 1e-09  # default: 1e-09 in pyscf
 _DEFAULT_GRIDS_LEVEL = 3  # default: 3 in pyscf
+
+
+class ValidationError(Exception):
+    pass
 
 
 @dataclass(slots=True)
@@ -71,6 +77,11 @@ class ESPGridsOption:
 class PipelineSettings(BaseModel):
     """
     Frontend schema for the pipeline settings.
+
+    Example usage:
+    >>> user_dict = {"input_file_or_dir": "smiles.txt"}
+    >>> config = PipelineSettings(**user_dict)
+    >>> config_dict = config.model_dump() # Convert to a dictionary
     """
     # Required settings
     input_file_or_dir: str = Field(
@@ -206,31 +217,47 @@ class PipelineSettings(BaseModel):
     @field_validator('input_file_or_dir')
     def validate_input(cls, input_file_or_dir: str) -> str:
         input_file_or_dir = Path(input_file_or_dir)
-        # Check file extension
-        if input_file_or_dir.is_file():
-            if input_file_or_dir.suffix not in ['.txt', '.csv']:
-                raise ValueError(
-                    "Input file must be a .txt or .csv file containing a single column of smiles strings."
-                )
-        elif input_file_or_dir.is_dir():
-            # Check if the directory contains any xyz files
-            if not any(input_file_or_dir.glob("*.xyz")):
-                raise ValueError(
-                    "Directory must contain at least one .xyz file.")
-        else:
-            raise ValueError(
-                "Input must be a valid .txt, .csv file or directory containing xyz files."
-            )
         # Check existence of the file or directory
         if not input_file_or_dir.exists():
-            raise ValueError(
+            raise ValidationError(
                 f"Input file or directory does not exist: {input_file_or_dir}")
-        return input_file_or_dir
+
+        # Validate single-file input (contains SMILES strings)
+        if input_file_or_dir.is_file():
+            if input_file_or_dir.suffix not in ['.txt', '.csv']:
+                raise ValidationError(
+                    "Input file must be a .txt or .csv file.")
+            # Check if the file has a single column
+            if input_file_or_dir.suffix == '.csv' and (
+                    not is_csv_single_column(input_file_or_dir)):
+                raise ValidationError(
+                    "CSV file must contain a single column of smiles strings.")
+
+            if input_file_or_dir.suffix == '.txt' and (
+                    not is_txt_single_column(input_file_or_dir)):
+                raise ValidationError(
+                    "Text file must contain a single column of smiles strings."
+                )
+        # Validate directory input (XYZ files)
+        elif input_file_or_dir.is_dir():
+            # Check for the first xyz file only (stopping at first match)
+            xyz_files = input_file_or_dir.glob("*.xyz")
+            try:
+                next(xyz_files)
+            except StopIteration:
+                raise ValidationError(
+                    "Directory must contain at least one .xyz file.")
+        else:
+            raise ValidationError(
+                "Input must be a valid .txt, .csv file or directory containing xyz files."
+            )
+
+        return str(input_file_or_dir)
 
     @field_validator('geometry_opt_method')
     def validate_geometry_opt_method(cls, method: str) -> str:
         if method.upper() not in SUPPORTED_GEOMETRY_OPT_METHODS:
-            raise ValueError(
+            raise ValidationError(
                 f"Unsupported geometry optimization method: {method}. Supported methods are: {', '.join(SUPPORTED_GEOMETRY_OPT_METHODS)}"
             )
         return method
@@ -242,10 +269,9 @@ class PipelineSettings(BaseModel):
 
         :param v: The optimizer name to validate.
         :return: The validated optimizer name.
-        :raises ValueError: If the optimizer name is not supported.
         """
         if optimizer not in SUPPORTED_ASE_OPTIMIZERS:
-            raise ValueError(
+            raise ValidationError(
                 f"Unsupported ASE optimizer: {optimizer}. Supported optimizers are: {', '.join(SUPPORTED_ASE_OPTIMIZERS)}"
             )
         return optimizer

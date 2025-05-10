@@ -6,10 +6,11 @@ from packaging import version
 from ase.optimize import BFGS, FIRE
 try:
     from aimnet2calc import AIMNet2ASE
-except ImportError:
+except (ImportError, OSError):
     AIMNet2ASE = None
-    logging.info("AIMNet2 calculator is not available. "
-                 "Please install the required package.")
+    logging.info(
+        "AIMNet2 calculator is not available or not set up correctly. "
+        "Please install the required package.")
 
 # Imports for pyscf backend
 import pyscf

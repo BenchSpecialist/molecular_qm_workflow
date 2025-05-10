@@ -1,4 +1,5 @@
 import os
+import shutil
 import tempfile
 import pytest
 from mqc_pipeline import Structure
@@ -12,8 +13,11 @@ def tmp_cwd():
     old_cwd = os.getcwd()
     tmp_dir = tempfile.mkdtemp()
     os.chdir(tmp_dir)
-    yield
-    os.chdir(old_cwd)
+    try:
+        yield
+    finally:
+        os.chdir(old_cwd)
+        shutil.rmtree(tmp_dir)
 
 
 @pytest.fixture(scope="session")
