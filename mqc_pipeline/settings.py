@@ -3,8 +3,6 @@ from pathlib import Path
 from pydantic import BaseModel, Field, field_validator
 from dataclasses import dataclass
 
-from .file_util import is_csv_single_column, is_txt_single_column
-
 ### Module constants ###
 METHOD_AIMNet2 = 'AIMNET2'
 METHOD_DFT = 'DFT'
@@ -98,7 +96,7 @@ class PipelineSettings(BaseModel):
 
     job_name: str = Field(
         default="mqc_pipeline",
-        description="Name of the SLURM job. Default is 'mqc_pipeline'."
+        description="Name of the SLURM job. Default is 'MQC_NEUTRAL'. "
         "Only relevant when num_jobs > 0.")
 
     # Calculation parameters
@@ -207,6 +205,19 @@ class PipelineSettings(BaseModel):
 
         return "\n".join(yaml_lines)
 
+    def to_recreate_string(self) -> str:
+        """
+        Return a string that can be copied and pasted to recreate this model.
+        The returned string is valid Python code that can be executed to create
+        an identical instance of the model.
+        """
+        lines = ["PipelineSettings("]
+        for key, value in self.model_dump().items():
+            lines.append(f"    {key}={repr(value)},")
+        lines.append(")")
+
+        return "\n".join(lines)
+
     @classmethod
     def from_yaml(cls, yaml_path: str | Path) -> "PipelineSettings":
         """
@@ -222,43 +233,14 @@ class PipelineSettings(BaseModel):
         return cls(**config_dict)
 
     @field_validator('input_file_or_dir')
-    def validate_input(cls, input_file_or_dir: str) -> str:
-        input_file_or_dir = Path(input_file_or_dir)
-        # Check existence of the file or directory
-        if not input_file_or_dir.exists():
+    def validate_input_existence(cls, input_file_or_dir: str) -> str:
+        # Note that `mqc_pipeline.validate.validate_input` function provides more
+        # detailed validation for the input file or directory.
+        # The logic is separeted to make the current model more flexible in setting
+        # up batching jobs.
+        if not Path(input_file_or_dir).exists():
             raise ValidationError(
                 f"Input file or directory does not exist: {input_file_or_dir}")
-
-        # Validate single-file input (contains SMILES strings)
-        if input_file_or_dir.is_file():
-            if input_file_or_dir.suffix not in ['.txt', '.csv']:
-                raise ValidationError(
-                    "Input file must be a .txt or .csv file.")
-            # Check if the file has a single column
-            if input_file_or_dir.suffix == '.csv' and (
-                    not is_csv_single_column(input_file_or_dir)):
-                raise ValidationError(
-                    "CSV file must contain a single column of smiles strings.")
-
-            if input_file_or_dir.suffix == '.txt' and (
-                    not is_txt_single_column(input_file_or_dir)):
-                raise ValidationError(
-                    "Text file must contain a single column of smiles strings."
-                )
-        # Validate directory input (XYZ files)
-        elif input_file_or_dir.is_dir():
-            # Check for the first xyz file only (stopping at first match)
-            xyz_files = input_file_or_dir.glob("*.xyz")
-            try:
-                next(xyz_files)
-            except StopIteration:
-                raise ValidationError(
-                    "Directory must contain at least one .xyz file.")
-        else:
-            raise ValidationError(
-                "Input must be a valid .txt, .csv file or directory containing xyz files."
-            )
-
         return str(input_file_or_dir)
 
     @field_validator('geometry_opt_method')
