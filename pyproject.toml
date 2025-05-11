@@ -31,25 +31,27 @@ where = ["."]
 
 [project.optional-dependencies]
 # temporary restore the old dependencies list for GH unittests workflow
-gh_test = [
+cpu_test = [
     "pytest>=7.0.0",
     "numpy >= 1.20.0",
     "scipy>=1.6.0",
     "pandas>=2.2.3",
+    "pyarrow",
     'pydantic >= 1.10',
     'PyYAML >= 6.0',
     'h5py >= 3.0',
     'rdkit',
     'ase',
-    "gpu4pyscf-cuda12x",
-    "cutensor-cu12",
+    'pyscf > 2.5.0',
 ]
 dev = [
     "pytest>=7.0.0",
 ]
-# Example use: pip install .[cuda]
-cuda = [
+# Example use: pip install .[gpu]
+gpu = [
     # Compatible with CUDA Version: 12.4
+    "gpu4pyscf-cuda12x",
+    "cutensor-cu12",
     "torch==2.6.0",
     "torchvision==0.21.0",
     "torchaudio==2.6.0",

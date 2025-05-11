@@ -3,7 +3,6 @@ import logging
 import numpy as np
 from pathlib import Path
 
-import pyscf
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Chem import rdDetermineBonds
