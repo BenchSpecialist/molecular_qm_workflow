@@ -169,7 +169,9 @@ def read_xyz(xyz_path: str, parse_comment=False) -> Structure:
         xyz.append([float(x), float(y), float(z)])
 
     if not parse_comment:
-        return Structure(elements=elements, xyz=np.array(xyz))
+        return Structure(elements=elements,
+                         xyz=np.array(xyz),
+                         metadata={'from_xyz_file': str(xyz_path)})
     else:
         # Example comment line:
         # B(=O)OB=O unique_id:54355245865 charge:0 multiplicity:1 energy_hartree:-275.62039364954484
@@ -206,7 +208,8 @@ def read_xyz(xyz_path: str, parse_comment=False) -> Structure:
                          smiles=smiles,
                          charge=charge,
                          multiplicity=multiplicity,
-                         property=property)
+                         property=property,
+                         metadata={'from_xyz_file': str(xyz_path)})
 
 
 def write_molecule_property(st_or_sts: StructureType, filename: str):
