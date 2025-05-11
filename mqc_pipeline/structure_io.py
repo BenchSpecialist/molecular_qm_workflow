@@ -21,7 +21,11 @@ from .property import (DFT_ENERGY_KEY, HOMO_KEY, LUMO_KEY, ESP_MIN_KEY,
 StructureType = Union[Structure, Iterable[Structure]]
 FileLikeType = Union[str, Path, TextIO, BinaryIO]
 
-SUPPORTED_FORMATS = ['json', 'pickle', 'xyz']
+# File type that save Structure object(s) to disk
+SUPPORTED_OBJ_FILE_FORMATS = ['json', 'pickle', 'xyz']
+
+# Columnar file format used to save Structure object(s) based on output schema
+COLUMNAR_FILE_EXTENSIONS = ('.csv', '.parquet', '.parq')
 
 SHARED_KEYS = ('unique_id', 'smiles')
 
@@ -42,10 +46,10 @@ def write(structures: StructureType,
 
     :raises ValueError: If the format is not supported
     """
-    if format not in SUPPORTED_FORMATS:
+    if format not in SUPPORTED_OBJ_FILE_FORMATS:
         raise ValueError(
             f"Unsupported format: {format}. Supported formats are: "
-            f"{SUPPORTED_FORMATS}")
+            f"{SUPPORTED_OBJ_FILE_FORMATS}")
     if format == 'json':
         write_json(structures, file_or_path)
     if format == 'pickle':
@@ -62,10 +66,10 @@ def read(file_or_path: FileLikeType, format: str = 'json') -> StructureType:
     :param format: Format to deserialize from ('json', 'pickle', 'xyz')
     """
     format = format.lower()
-    if format not in SUPPORTED_FORMATS:
+    if format not in SUPPORTED_OBJ_FILE_FORMATS:
         raise ValueError(
             f"Unsupported format: {format}. Supported formats are: "
-            f"{SUPPORTED_FORMATS}")
+            f"{SUPPORTED_OBJ_FILE_FORMATS}")
     if format == 'json':
         return read_json(file_or_path)
     if format == 'pickle':
@@ -217,7 +221,7 @@ def write_molecule_property(st_or_sts: StructureType, filename: str):
     Write the molecule-level properties structure properties of one or multiple
     Structure objects to a CSV or Parquet file.
     """
-    if not filename.endswith(('.csv', '.parquet')):
+    if not filename.endswith(COLUMNAR_FILE_EXTENSIONS):
         raise ValueError("Unsupported file format. Use .csv or .parquet")
 
     if isinstance(st_or_sts, Structure):
@@ -239,7 +243,8 @@ def write_molecule_property(st_or_sts: StructureType, filename: str):
 
     if filename.endswith('.csv'):
         df.to_csv(filename, index=False)
-    if filename.endswith('.parquet'):
+
+    if filename.endswith(('.parquet', '.parq')):
         # Convert to PyArrow Table
         table = pa.Table.from_pydict(data)
         pq.write_table(table, filename)
@@ -250,7 +255,7 @@ def write_structure_atom_property(st: Structure, filename: str):
     Write out the atom-level structure properties to a CSV or Parquet file.
     """
 
-    if not filename.endswith(('.csv', '.parquet')):
+    if not filename.endswith(COLUMNAR_FILE_EXTENSIONS):
         raise ValueError("Unsupported file format. Use .csv or .parquet")
 
     data = {
@@ -265,7 +270,7 @@ def write_structure_atom_property(st: Structure, filename: str):
     if filename.endswith('.csv'):
         df.to_csv(filename, index=False)
 
-    if filename.endswith('.parquet'):
+    if filename.endswith(('.parquet', '.parq')):
         # Convert to PyArrow Table
         table = pa.Table.from_pandas(df)
         # Add metadata
