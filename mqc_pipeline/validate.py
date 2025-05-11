@@ -57,11 +57,15 @@ def is_txt_single_column(txt_path: PathLike, first_n_rows: int = 5) -> bool:
         return False
 
 
-def validate_input(input_file_or_dir: str):
+def validate_input(input_file_or_dir: PathLike) -> str:
     """
     Validate the input file or directory.
     """
     input_file_or_dir = Path(input_file_or_dir)
+    if not Path(input_file_or_dir).exists():
+        raise ValidationError(
+            f"Input file or directory does not exist: {input_file_or_dir}")
+
     # Validate single-file input (contains SMILES strings)
     if input_file_or_dir.is_file():
         if input_file_or_dir.suffix not in ['.txt', '.csv']:
