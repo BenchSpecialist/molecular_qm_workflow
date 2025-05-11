@@ -1,10 +1,11 @@
 from pathlib import Path
 
 import pytest
-from mqc_pipeline import file_util
+from mqc_pipeline.validate import CSV_COL_NAMES, is_csv_single_column, \
+    is_txt_single_column
 
 
-@pytest.mark.parametrize("col_name", file_util.CSV_COL_NAMES)
+@pytest.mark.parametrize("col_name", CSV_COL_NAMES)
 def test_is_csv_single_column(col_name, tmp_cwd):
     csv_path = "test.csv"
     csv_content = f"""{col_name}
@@ -12,14 +13,14 @@ def test_is_csv_single_column(col_name, tmp_cwd):
     CCOC(=O)OCC
     """
     Path(csv_path).write_text(csv_content)
-    assert file_util.is_csv_single_column(csv_path, first_n_rows=2) is True
+    assert is_csv_single_column(csv_path, first_n_rows=2) is True
 
     # Test with a CSV file with multiple columns
     csv_content = f"""{col_name},other_col
     O=C1OCCO1,other_data
     """
     Path(csv_path).write_text(csv_content)
-    assert file_util.is_csv_single_column(csv_path, first_n_rows=2) is False
+    assert is_csv_single_column(csv_path, first_n_rows=2) is False
 
 
 def test_is_txt_single_column(tmp_cwd):
@@ -29,11 +30,11 @@ def test_is_txt_single_column(tmp_cwd):
     CCOC(=O)OCC
     """
     Path(txt_path).write_text(txt_content)
-    assert file_util.is_txt_single_column(txt_path, first_n_rows=2) is True
+    assert is_txt_single_column(txt_path, first_n_rows=2) is True
     # Test with a .txt file with multiple columns
     txt_content = """# Input data
     O=C1OCCO1 other_data
     CCOC(=O)OCC other_data
     """
     Path(txt_path).write_text(txt_content)
-    assert file_util.is_txt_single_column(txt_path, first_n_rows=2) is False
+    assert is_txt_single_column(txt_path, first_n_rows=2) is False
