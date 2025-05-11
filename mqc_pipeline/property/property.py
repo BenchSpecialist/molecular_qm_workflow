@@ -1,8 +1,16 @@
 import time
 import logging
 import numpy as np
-from gpu4pyscf.dft import rks, uks
-from gpu4pyscf.qmmm import chelpg
+try:
+    from gpu4pyscf.dft import rks, uks
+    from gpu4pyscf.qmmm import chelpg
+    _use_gpu = True
+    logging.info("Using GPU-accelerated PySCF.\n")
+except ImportError:
+    from pyscf.dft import rks, uks
+    _use_gpu = False
+    logging.info(
+        "GPU4PySCF not available, falling back to normal CPU PySCF.\n")
 
 from ..common import Structure
 from ..constants import HARTREE_TO_EV
@@ -126,8 +134,9 @@ def get_properties_neutral(st: Structure,
     # Evaluate CHELPG charges and transfers data from GPU (cupy) to CPU (numpy)
     # CHELPG method fits atomic charges to reproduce ESP at a number of points
     # around the molecule.
-    chelpg_charges = chelpg.eval_chelpg_layer_gpu(mf).get()
-    st.atom_property[CHELPG_CHARGE_KEY] = chelpg_charges
+    if _use_gpu:
+        chelpg_charges = chelpg.eval_chelpg_layer_gpu(mf).get()
+        st.atom_property[CHELPG_CHARGE_KEY] = chelpg_charges
 
     # PySCF is not expected to change the order of atoms, but we update it just in case
     st.elements = [mol.atom_symbol(i) for i in range(mol.natm)]
