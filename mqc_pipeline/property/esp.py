@@ -1,7 +1,6 @@
-import cupy
+import importlib
 import numpy as np
 import pyscf
-from gpu4pyscf.df import int3c2e
 
 from ..constants import ANGSTROM_TO_BOHR, HARTREE_TO_EV
 
@@ -124,6 +123,15 @@ def get_esp_range(mol: 'pyscf.gto.mole.Mole', grids: np.ndarray,
 
     :return: a tuple containing the minimum and maximum ESP values in eV.
     """
+    # Dynamic imports using importlib with error handling
+    try:
+        cupy = importlib.import_module('cupy')
+        int3c2e = importlib.import_module('gpu4pyscf.df.int3c2e')
+    except ImportError as e:
+        raise RuntimeError(
+            f"Required GPU modules not available: {e}. Please ensure cupy and gpu4pyscf are installed."
+        )
+
     # Convert input data to CuPy arrays for GPU acceleration
     qm_xyz = cupy.array(mol.atom_coords())
     qm_charges = cupy.array(mol.atom_charges())
@@ -160,7 +168,8 @@ def _get_esp_range(mol: 'pyscf.gto.mole.Mole', grids: np.ndarray,
     This function uses the handy `int1e_grids` function available in the latest
     GPU4PySCF version to compute the electrostatic potential with given grid points.
     """
-    from gpu4pyscf.gto.int3c1e import int1e_grids
+    # Dynamic import of the int1e_grids function
+    int1e_grids = importlib.import_module('gpu4pyscf.gto.int3c1e').int1e_grids
 
     esp_vals = int1e_grids(mol, grids, dm=one_rdm)
     return min(esp_vals) * HARTREE_TO_EV, max(esp_vals) * HARTREE_TO_EV

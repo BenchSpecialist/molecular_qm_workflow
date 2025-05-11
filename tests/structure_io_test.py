@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from mqc_pipeline import structure_io, Structure
-from mqc_pipeline.constants import DFT_ENERGY_KEY
+from mqc_pipeline.property import DFT_ENERGY_KEY
 
 
 def test_xyz_io(tmp_cwd):

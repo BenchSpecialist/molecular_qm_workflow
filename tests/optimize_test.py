@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from mqc_pipeline import optimize, Structure
-from mqc_pipeline.constants import DFT_ENERGY_KEY, DFT_FORCES_KEY
+from mqc_pipeline.property import DFT_ENERGY_KEY, DFT_FORCES_KEY
 from mqc_pipeline.util import has_nvidia_gpu
 
 
