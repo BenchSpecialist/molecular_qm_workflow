@@ -4,20 +4,9 @@ from packaging import version
 
 # Imports for ASE backend
 from ase.optimize import BFGS, FIRE
-try:
-    from aimnet2calc import AIMNet2ASE
-except (ImportError, OSError):
-    AIMNet2ASE = None
-    logging.info(
-        "AIMNet2 calculator is not available or not set up correctly. "
-        "Please install the required package.")
 
 # Imports for pyscf backend
-import pyscf
 from pyscf.geomopt import geometric_solver
-assert version.parse(
-    pyscf.__version__) > version.parse("2.5.0"), "Version must be > 2.5.0"
-
 try:
     # check if GPU4PySCF is available
     from gpu4pyscf.dft import rks, uks
@@ -43,6 +32,15 @@ def optimize_by_aimnet2(st: Structure, options: ASEOption) -> Structure:
     :param st: Structure object containing the molecule information.
     :param options: ASEOption object containing optimization parameters.
     """
+    try:
+        from aimnet2calc import AIMNet2ASE
+    except (ImportError, OSError):
+        err_msg = (
+            "AIMNet2 calculator is not available or not set up correctly. "
+            "Please install the required package.")
+        logging.error(err_msg)
+        raise ImportError(err_msg)
+
     # Attach AIMNet2 calculator to the molecule
     ase_atoms = st.to_ase_atoms()
     ase_atoms.calc = AIMNet2ASE(base_calc=METHOD_AIMNet2,

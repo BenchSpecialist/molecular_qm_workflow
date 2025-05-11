@@ -107,24 +107,29 @@ def get_properties_neutral(st: Structure,
     st.property[DIPOLE_X_KEY], st.property[DIPOLE_Y_KEY], st.property[
         DIPOLE_Z_KEY] = mf.dip_moment(unit='Debye', dm=rdm1)
 
-    # Generate grids for ESP calculations
-    grids = generate_esp_grids(mol,
-                               rcut=esp_options.solvent_accessible_region,
-                               space=esp_options.grid_spacing,
-                               solvent_probe=esp_options.probe_depth)
-    st.property[ESP_MIN_KEY], st.property[ESP_MAX_KEY] = get_esp_range(
-        mol, grids, one_rdm=rdm1)
-
     if return_gradient:
         gradients_arr = mf.Gradients().kernel()
         st.save_gradients(gradients_arr, prop_key=DFT_FORCES_KEY)
 
-    # Evaluate CHELPG charges and transfers data from GPU (cupy) to CPU (numpy)
-    # CHELPG method fits atomic charges to reproduce ESP at a number of points
-    # around the molecule.
+    # ESP and CHELPG charges calculations can only run on GPUs
     if _use_gpu:
+        # Generate grids for ESP calculations
+        grids = generate_esp_grids(mol,
+                                   rcut=esp_options.solvent_accessible_region,
+                                   space=esp_options.grid_spacing,
+                                   solvent_probe=esp_options.probe_depth)
+        st.property[ESP_MIN_KEY], st.property[ESP_MAX_KEY] = get_esp_range(
+            mol, grids, one_rdm=rdm1)
+
+        # Evaluate CHELPG charges and transfers data from GPU (cupy) to CPU (numpy)
+        # CHELPG method fits atomic charges to reproduce ESP at a number of points
+        # around the molecule.
         chelpg_charges = chelpg.eval_chelpg_layer_gpu(mf).get()
         st.atom_property[CHELPG_CHARGE_KEY] = chelpg_charges
+    else:
+        logging.warning(
+            "CHELPG charges and ESP calculations are not available without GPU."
+        )
 
     # PySCF is not expected to change the order of atoms, but we update it just in case
     st.elements = [mol.atom_symbol(i) for i in range(mol.natm)]

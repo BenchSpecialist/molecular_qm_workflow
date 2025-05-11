@@ -5,6 +5,7 @@ Import the parent directory to the system path to run this script from anywhere.
 export PATH="/path/to/mqc_pipeline/cmdline:$PATH"
 ```
 """
+import pprint
 import pickle
 import logging
 import argparse
@@ -98,15 +99,14 @@ def main():
     # Load and validate settings from the configuration file
     logging.info(f"Using configuration file: {args.config}")
     settings = PipelineSettings.from_yaml(args.config)
-    # Store config path for later use
-    settings.config_path = args.config
-    logging.info(f"Settings:\n{settings}")
+    logging.info(f"Settings:\n{pprint.pformat(dict(settings))}")
 
     if settings.num_jobs == 0:
         # Run the pipeline locally without SLURM orchestration
         logging.info(
             "Running the pipeline locally without SLURM orchestration.")
-        pipeline.run_from_config_file(args.config)
+        pipeline.run_from_config_settings(settings)
+        logging.info("Pipeline finished successfully.")
         return
 
     # Create output directory for batch files and logs

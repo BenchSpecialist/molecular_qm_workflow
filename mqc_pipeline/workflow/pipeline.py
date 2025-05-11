@@ -14,7 +14,7 @@ from ..structure_io import write_molecule_property, write_structure_atom_propert
 
 from .io import read_smiles, read_xyz_dir
 
-_GPU_ID = os.environ.get("CUDA_VISIBLE_DEVICES")
+_GPU_ID = os.environ.get("CUDA_VISIBLE_DEVICES") or 0
 
 MOL_PROP_BATCH_OUTFILE = "{GPU_ID}_{mol_id_of_first_mol}_molecule_property.csv"
 ATOM_PROP_OUTFILE = "{mol_id}_atom_property.csv"
@@ -52,7 +52,7 @@ def run_one_molecule(smiles_or_st: str | Structure, opt_func: Callable,
         logging.error(
             f"Error optimizing geometry for {st.unique_id} (smiles: {st.smiles}): {e}"
         )
-        return st
+        return
 
     # Property calculation
     try:
@@ -91,7 +91,7 @@ def run_one_batch(inputs: list[str] | list[Structure],
     for smiles_or_st in inputs:
         # Put detailed error handling in the function for clarity
         st = run_one_molecule(smiles_or_st, opt_func, prop_func)
-        if st is None:
+        if st:
             out_sts.append(st)
 
     # Write results to files
@@ -104,8 +104,6 @@ def run_one_batch(inputs: list[str] | list[Structure],
 
 
 def run_from_config_settings(settings: PipelineSettings) -> None:
-    # Load and validate settings from the configuration file
-    logging.info(f"Settings:\n{pprint.pformat(dict(settings))}")
     logging.info(outfile_doc)
 
     # Read input from config
@@ -113,20 +111,10 @@ def run_from_config_settings(settings: PipelineSettings) -> None:
     if input_path.is_file():
         # type: list[str]
         inputs = read_smiles(input_path)
+        logging.info(f"Read {len(inputs)} SMILES from {input_path}")
     else:
         # type: list[Structure]
         inputs = list(read_xyz_dir(input_path))
 
     # Run the pipeline
     run_one_batch(inputs, settings)
-
-
-def run_from_config_file(config_path: str) -> None:
-    if not Path(config_path).exists():
-        raise FileNotFoundError(f"Configuration file not found: {config_path}")
-
-    # Load and validate settings from the configuration file
-    logging.info(f"Using configuration file: {config_path}")
-    config_settings = PipelineSettings.from_yaml(config_path)
-
-    run_from_config_settings(config_settings)
