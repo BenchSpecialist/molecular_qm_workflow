@@ -162,7 +162,7 @@ def read_xyz(xyz_path: str, parse_comment=False) -> Structure:
         lines = fhandle.readlines()
 
     elements, xyz = [], []
-    for line in lines:
+    for line in lines[2:]:
         el, x, y, z = line.split()
         elements.append(el)
         xyz.append([float(x), float(y), float(z)])

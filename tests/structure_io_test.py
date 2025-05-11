@@ -23,7 +23,7 @@ def test_xyz_io(tmp_cwd):
     structure_io.write_xyz(st, xyz_file)
 
     # Read the structure back from the XYZ file
-    st_loaded = structure_io.read_xyz(xyz_file)
+    st_loaded = structure_io.read_xyz(xyz_file, parse_comment=True)
 
     # xyz format loses some information in the conversion, so we only check
     # relevant attributes
