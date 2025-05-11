@@ -29,7 +29,7 @@ except ImportError:
 
 from .common import Structure, COORDINATE_UNIT
 from .constants import EV_TO_HARTREE
-from .property import DFT_ENERGY_KEY
+from .property import DFT_ENERGY_KEY, DFT_FORCES_KEY
 from .settings import ASEOption, PySCFOption, METHOD_AIMNet2
 
 OPTIMIZER_NAME_TO_CLASS = {'BFGS': BFGS, 'FIRE': FIRE}
@@ -159,7 +159,7 @@ def optimize_by_pyscf(st: Structure,
 
     # Save the energy and forces of the optimized geometry
     st.property[DFT_ENERGY_KEY] = float(energies[-1])
-    st.save_gradients(gradients[-1])
+    st.save_gradients(gradients[-1], prop_key=DFT_FORCES_KEY)
 
     # PySCF is not expected to change the order of atoms, but we update it just in case
     st.elements = [

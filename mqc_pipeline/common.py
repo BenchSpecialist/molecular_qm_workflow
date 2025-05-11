@@ -17,8 +17,6 @@ from rdkit import Chem
 from ase import Atoms
 import pyscf
 
-from .property import DFT_FORCES_KEY
-
 COORDINATE_UNIT = 'angstrom'
 _DEFAULT_CHARGE = 0.
 _DEFAULT_MULTIPLICITY = 1.
@@ -60,9 +58,7 @@ class Structure:
         if self.metadata is None:
             self.metadata = {}
 
-    def save_gradients(self,
-                       gradients_arr: np.ndarray,
-                       prop_key: str = DFT_FORCES_KEY):
+    def save_gradients(self, gradients_arr: np.ndarray, prop_key: str):
         """
         Save gradients per-axis into the atom_property dictionary.
         """

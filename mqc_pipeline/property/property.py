@@ -17,21 +17,9 @@ from ..constants import HARTREE_TO_EV
 from ..settings import PySCFOption, ESPGridsOption
 
 from .esp import generate_esp_grids, get_esp_range
-
-############ Property Keys ############
-# Molecule-level properties
-DFT_ENERGY_KEY = "energy_hartree"
-HOMO_KEY = "homo_eV"
-LUMO_KEY = "lumo_eV"
-ESP_MIN_KEY = "esp_min_eV"
-ESP_MAX_KEY = "esp_max_eV"
-DIPOLE_X_KEY = "dipole_x_debye"
-DIPOLE_Y_KEY = "dipole_y_debye"
-DIPOLE_Z_KEY = "dipole_z_debye"  # Fixed typo in the key name
-
-# Atom-level properties (plus elements, coordinates)
-DFT_FORCES_KEY = "forces"  # used to generated per-axis label, e.g. "forces_x"
-CHELPG_CHARGE_KEY = "chelpg_charge"
+from .keys import (DFT_ENERGY_KEY, HOMO_KEY, LUMO_KEY, ESP_MIN_KEY,
+                   ESP_MAX_KEY, DIPOLE_X_KEY, DIPOLE_Y_KEY, DIPOLE_Z_KEY,
+                   DFT_FORCES_KEY, CHELPG_CHARGE_KEY)
 
 
 def _is_scf_done(mf_obj) -> bool:
@@ -129,7 +117,7 @@ def get_properties_neutral(st: Structure,
 
     if return_gradient:
         gradients_arr = mf.Gradients().kernel()
-        st.save_gradients(gradients_arr)
+        st.save_gradients(gradients_arr, prop_key=DFT_FORCES_KEY)
 
     # Evaluate CHELPG charges and transfers data from GPU (cupy) to CPU (numpy)
     # CHELPG method fits atomic charges to reproduce ESP at a number of points

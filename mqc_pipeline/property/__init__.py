@@ -1,5 +1,5 @@
-from .property import (
-    get_properties_neutral,
+from .property import get_properties_neutral
+from .keys import (
     DFT_ENERGY_KEY,
     HOMO_KEY,
     LUMO_KEY,
