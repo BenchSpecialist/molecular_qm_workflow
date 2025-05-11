@@ -7,6 +7,7 @@ import pickle
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.parquet as pq
 from pathlib import Path
 from dataclasses import asdict
 from typing import Union, BinaryIO, TextIO, Iterable
@@ -237,8 +238,8 @@ def write_molecule_property(st_or_sts: StructureType, filename: str):
         df.to_csv(filename, index=False)
     if filename.endswith('.parquet'):
         # Convert to PyArrow Table
-        table = pa.Table.from_pandas(df)
-        pa.parquet.write_table(table, filename)
+        table = pa.Table.from_pydict(data)
+        pq.write_table(table, filename)
 
 
 def write_structure_atom_property(st: Structure, filename: str):
@@ -270,11 +271,6 @@ def write_structure_atom_property(st: Structure, filename: str):
             for shared_key in SHARED_KEYS
         }
 
-        # Convert metadata values to bytes (required by PyArrow)
-        metadata_bytes = {
-            k: v.encode('utf-8')
-            for k, v in table_metadata.items()
-        }
-
-        # Write to Parquet with metadata
-        pa.parquet.write_table(table, filename, metadata=metadata_bytes)
+        table = table.replace_schema_metadata(table_metadata)
+        # Write to Parquet file
+        pq.write_table(table, filename)

@@ -1,5 +1,8 @@
 import pytest
 import numpy as np
+import pandas as pd
+import pyarrow.parquet as pq
+from pathlib import Path
 from mqc_pipeline import structure_io, Structure
 from mqc_pipeline.property import DFT_ENERGY_KEY
 
@@ -65,3 +68,35 @@ def test_multiple_structures_io(file_format, methane_st, n2_st, tmp_cwd):
 
     # Test that the original and loaded structures are equal
     assert sts_list == loaded_sts_list
+
+
+def test_write_molecule_property(methane_st, n2_st):
+    sts = [methane_st, n2_st]
+    csv_file = "mol.csv"
+    # Test writing molecule-level properties finishes without error
+    structure_io.write_molecule_property(sts, csv_file)
+    data = pd.read_csv(csv_file)
+    assert data.shape == (2, 10)
+
+    pq_file = "mol.parquet"
+    structure_io.write_molecule_property(sts, pq_file)
+    table = pq.read_table(pq_file)
+    assert table.shape == (2, 10)
+
+
+def test_write_structure_atom_property(methane_st):
+    csv_file = "atom.csv"
+
+    # Test writing atom-level properties finishes without error
+    structure_io.write_structure_atom_property(methane_st, csv_file)
+    data = pd.read_csv(csv_file)
+    assert data.shape == (5, 5)
+
+    pq_file = "atom.parquet"
+    structure_io.write_structure_atom_property(methane_st, pq_file)
+    table = pq.read_table(pq_file)
+    assert table.shape == (5, 5)
+    assert table.schema.metadata == {
+        b'smiles': b'C',
+        b'unique_id': b'12345678901'
+    }
