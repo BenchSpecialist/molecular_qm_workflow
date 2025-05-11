@@ -83,21 +83,28 @@ class PipelineSettings(BaseModel):
     >>> config = PipelineSettings(**user_dict)
     >>> config_dict = config.model_dump() # Convert to a dictionary
     """
-    # Required settings
+    # Input and job settings
     input_file_or_dir: str = Field(
         description=
         "Path to a text/csv file that contains a single column of smiles strings. "
         "Alternatively, a directory containing multiple xyz files.")
 
-    num_gpus: int = Field(
+    num_jobs: int = Field(
         default=1,
-        description="Number of GPUs to use for the calculations. Default is 1."
+        ge=0,
+        description="Number of SLURM batch jobs to launch. Default is 1. "
+        "If set to 0, the pipeline will run locally without SLURM orchestration."
     )
 
+    job_name: str = Field(
+        default="mqc_pipeline",
+        description="Name of the SLURM job. Default is 'mqc_pipeline'."
+        "Only relevant when num_jobs > 0.")
+
+    # Calculation parameters
     geometry_opt_method: str = Field(
         default=METHOD_DFT, description="Method for geometry optimization.")
 
-    # Optional settings
     ## ASE related fields: used only when geometry_opt_method is 'aimnet2'
     ase_optimizer_name: str = Field(
         default=BFGS_OPTIMIZER,
