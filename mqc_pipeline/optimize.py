@@ -11,7 +11,7 @@ try:
     # check if GPU4PySCF is available
     from gpu4pyscf.dft import rks, uks
     logging.info("Using GPU-accelerated PySCF.\n")
-except ImportError:
+except (ImportError, AttributeError):
     logging.info(
         "GPU4PySCF not available, falling back to normal CPU PySCF.\n")
     from pyscf.dft import rks, uks

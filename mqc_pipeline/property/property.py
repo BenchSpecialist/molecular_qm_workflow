@@ -6,7 +6,7 @@ try:
     from gpu4pyscf.qmmm import chelpg
     _use_gpu = True
     logging.info("Using GPU-accelerated PySCF.\n")
-except ImportError:
+except (ImportError, AttributeError):
     from pyscf.dft import rks, uks
     _use_gpu = False
     logging.info(
