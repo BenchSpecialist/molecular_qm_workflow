@@ -43,6 +43,7 @@ cpu_test = [
     'rdkit',
     'ase',
     'pyscf > 2.5.0',
+    'geometric', # for geometry optimization
 ]
 dev = [
     "pytest>=7.0.0",
