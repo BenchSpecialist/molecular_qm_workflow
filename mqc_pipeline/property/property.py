@@ -10,6 +10,21 @@ from ..settings import PySCFOption, ESPGridsOption
 
 from .esp import generate_esp_grids, get_esp_range
 
+############ Property Keys ############
+# Molecule-level properties
+DFT_ENERGY_KEY = "energy_hartree"
+HOMO_KEY = "homo_eV"
+LUMO_KEY = "lumo_eV"
+ESP_MIN_KEY = "esp_min_eV"
+ESP_MAX_KEY = "esp_max_eV"
+DIPOLE_X_KEY = "dipole_x_debye"
+DIPOLE_Y_KEY = "dipole_y_debye"
+DIPOLE_Z_KEY = "dipole_z_debye"  # Fixed typo in the key name
+
+# Atom-level properties (plus elements, coordinates)
+DFT_FORCES_KEY = "forces"  # used to generated per-axis label, e.g. "forces_x"
+CHELPG_CHARGE_KEY = "chelpg_charge"
+
 
 def _is_scf_done(mf_obj) -> bool:
     """
@@ -81,25 +96,27 @@ def get_properties_neutral(st: Structure,
     mf.kernel()
 
     # Get the total SCF energy
-    st.property['energy_hartree'] = float(mf.e_tot)
+    st.property[DFT_ENERGY_KEY] = float(mf.e_tot)
 
     # Get HOMO and LUMO energies (neutral species only) in eV.
-    st.property['homo_eV'] = float(
+    st.property[HOMO_KEY] = float(
         mf.mo_energy[mf.mo_occ > 0][-1]) * HARTREE_TO_EV
-    st.property['lumo_eV'] = float(
+    st.property[LUMO_KEY] = float(
         mf.mo_energy[mf.mo_occ == 0][0]) * HARTREE_TO_EV
 
-    # Compute one-body reduced density matrix for dipole, electrostatic potential calculations
+    # Compute one-body reduced density matrix, which is used in:
+    # - electrostatic potential (ESP) calculations
+    # - dipole, [quadrupole] calculations
     rdm1 = mf.make_rdm1()
-    st.property['dipole_x_debye'], st.property['dipole_y_debye'], st.property[
-        'dipole_z_debye'] = mf.dip_moment(unit='Debye', dm=rdm1).tolist()
+    st.property[DIPOLE_X_KEY], st.property[DIPOLE_Y_KEY], st.property[
+        DIPOLE_Z_KEY] = mf.dip_moment(unit='Debye', dm=rdm1)
 
     # Generate grids for ESP calculations
     grids = generate_esp_grids(mol,
                                rcut=esp_options.solvent_accessible_region,
                                space=esp_options.grid_spacing,
                                solvent_probe=esp_options.probe_depth)
-    st.property['esp_min_eV'], st.property['esp_max_eV'] = get_esp_range(
+    st.property[ESP_MIN_KEY], st.property[ESP_MAX_KEY] = get_esp_range(
         mol, grids, one_rdm=rdm1)
 
     if return_gradient:
@@ -107,8 +124,14 @@ def get_properties_neutral(st: Structure,
         st.save_gradients(gradients_arr)
 
     # Evaluate CHELPG charges and transfers data from GPU (cupy) to CPU (numpy)
+    # CHELPG method fits atomic charges to reproduce ESP at a number of points
+    # around the molecule.
     chelpg_charges = chelpg.eval_chelpg_layer_gpu(mf).get()
-    st.save_charges(chelpg_charges, prop_key='chelpg_charge')
+    st.atom_property[CHELPG_CHARGE_KEY] = chelpg_charges
+
+    # PySCF is not expected to change the order of atoms, but we update it just in case
+    st.elements = [mol.atom_symbol(i) for i in range(mol.natm)]
+    st.atomic_numbers = [mol.atom_charge(i) for i in range(mol.natm)]
 
     st.metadata['dft_prop_calc_duration'] = time.perf_counter() - t_start
     logging.info(

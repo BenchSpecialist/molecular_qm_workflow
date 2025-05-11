@@ -28,7 +28,8 @@ except ImportError:
     from pyscf.dft import rks, uks
 
 from .common import Structure, COORDINATE_UNIT
-from .constants import EV_TO_HARTREE, DFT_ENERGY_KEY
+from .constants import EV_TO_HARTREE
+from .property import DFT_ENERGY_KEY
 from .settings import ASEOption, PySCFOption, METHOD_AIMNet2
 
 OPTIMIZER_NAME_TO_CLASS = {'BFGS': BFGS, 'FIRE': FIRE}
@@ -73,11 +74,10 @@ def optimize_by_aimnet2(st: Structure, options: ASEOption) -> Structure:
         ase_atoms.get_potential_energy()) * EV_TO_HARTREE
     st.save_gradients(ase_atoms.get_forces(),
                       prop_key=f"{METHOD_AIMNet2}_forces")
-    st.save_charges(ase_atoms.calc.results.get('charges', None),
-                    prop_key=f"{METHOD_AIMNet2}_charges")
+    st.atom_property[f"{METHOD_AIMNet2}_charges"] = ase_atoms.calc.results.get(
+        'charges', None)
 
-    if st.atomic_numbers is None:
-        st.atomic_numbers = ase_atoms.get_atomic_numbers().tolist()
+    st.atomic_numbers = ase_atoms.get_atomic_numbers().tolist()
 
     return st
 
@@ -160,5 +160,13 @@ def optimize_by_pyscf(st: Structure,
     # Save the energy and forces of the optimized geometry
     st.property[DFT_ENERGY_KEY] = float(energies[-1])
     st.save_gradients(gradients[-1])
+
+    # PySCF is not expected to change the order of atoms, but we update it just in case
+    st.elements = [
+        mol_optimized.atom_symbol(i) for i in range(mol_optimized.natm)
+    ]
+    st.atomic_numbers = [
+        mol_optimized.atom_charge(i) for i in range(mol_optimized.natm)
+    ]
 
     return st
