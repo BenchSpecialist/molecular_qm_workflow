@@ -4,11 +4,11 @@ import numpy as np
 try:
     from gpu4pyscf.dft import rks, uks
     from gpu4pyscf.qmmm import chelpg
-    _use_gpu = True
+    _USE_GPU = True
     logging.info("Using GPU-accelerated PySCF.\n")
 except (ImportError, AttributeError):
     from pyscf.dft import rks, uks
-    _use_gpu = False
+    _USE_GPU = False
     logging.info(
         "GPU4PySCF not available, falling back to normal CPU PySCF.\n")
 
@@ -41,10 +41,9 @@ def get_quadrupole_moment(
 
     :return: Quadrupole moment components (Qxx, Qyy, Qzz, Qxy).
     """
-    if _is_scf_done(mf_obj):
+    if not _is_scf_done(mf_obj):
         raise RuntimeError(
-            "Quadrupole cal error: No SCF calculation performed. Please run SCF first."
-        )
+            "Quadrupole: No SCF calculation performed. Please run SCF first.")
 
     # PySCF returns the traceless quadrupole moment as a full symmetric matrix;
     # only upper or lower triangle is needed
@@ -55,6 +54,38 @@ def get_quadrupole_moment(
     qyz = float(quad_moment[1, 2])
 
     return qxx, qyy, qzz, qxy, qxz, qyz
+
+
+def get_default_properties(st: Structure, mf, rdm1) -> Structure:
+    """
+    Get default properties for the given structure. This function wraps calculations
+    of shared properties among neutral solvent and ions, including:
+    Total electronic energy (Hartree), HOMO (eV), LUMO (eV), dipole (Debye).
+
+    :param st: Structure object containing the molecule information.
+    :param mf: PySCF mean-field object.
+    :param rdm1: np.ndarray represents one-body density matrix
+
+    :return: Structure object with populated `property` attribute.
+    """
+    if not _is_scf_done(mf):
+        raise RuntimeError(
+            "Default Properties: No SCF calculation performed. Please run SCF first."
+        )
+
+    # Get the total SCF energy
+    st.property[DFT_ENERGY_KEY] = float(mf.e_tot)
+
+    # Get HOMO and LUMO energies (neutral species only) in eV.
+    st.property[HOMO_KEY] = float(
+        mf.mo_energy[mf.mo_occ > 0][-1]) * HARTREE_TO_EV
+    st.property[LUMO_KEY] = float(
+        mf.mo_energy[mf.mo_occ == 0][0]) * HARTREE_TO_EV
+
+    # Get dipole
+    st.property[DIPOLE_X_KEY], st.property[DIPOLE_Y_KEY], st.property[
+        DIPOLE_Z_KEY] = mf.dip_moment(unit='Debye', dm=rdm1)
+    return st
 
 
 def get_properties_neutral(st: Structure,
@@ -91,28 +122,20 @@ def get_properties_neutral(st: Structure,
     # Run SCF calculation
     mf.kernel()
 
-    # Get the total SCF energy
-    st.property[DFT_ENERGY_KEY] = float(mf.e_tot)
-
-    # Get HOMO and LUMO energies (neutral species only) in eV.
-    st.property[HOMO_KEY] = float(
-        mf.mo_energy[mf.mo_occ > 0][-1]) * HARTREE_TO_EV
-    st.property[LUMO_KEY] = float(
-        mf.mo_energy[mf.mo_occ == 0][0]) * HARTREE_TO_EV
-
     # Compute one-body reduced density matrix, which is used in:
     # - electrostatic potential (ESP) calculations
     # - dipole, [quadrupole] calculations
     rdm1 = mf.make_rdm1()
-    st.property[DIPOLE_X_KEY], st.property[DIPOLE_Y_KEY], st.property[
-        DIPOLE_Z_KEY] = mf.dip_moment(unit='Debye', dm=rdm1)
+
+    # Get default properties: e_tot, HOMO, LUMO, dipole
+    st = get_default_properties(st, mf, rdm1)
 
     if return_gradient:
         gradients_arr = mf.Gradients().kernel()
         st.save_gradients(gradients_arr, prop_key=DFT_FORCES_KEY)
 
     # ESP and CHELPG charges calculations can only run on GPUs
-    if _use_gpu:
+    if _USE_GPU:
         # Generate grids for ESP calculations
         grids = generate_esp_grids(mol,
                                    rcut=esp_options.solvent_accessible_region,
