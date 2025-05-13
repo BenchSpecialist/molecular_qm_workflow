@@ -1,10 +1,10 @@
-import logging
 import pandas as pd
 from pathlib import Path
 from typing import Generator
 
 from ..common import Structure
 from ..structure_io import read_xyz
+from ..util import logger
 
 
 def read_smiles(input_file: str) -> list[str]:
@@ -42,4 +42,4 @@ def read_xyz_dir(input_dir: str) -> Generator[Structure, None, None]:
         try:
             yield read_xyz(file)
         except Exception as e:
-            logging.error(f"Error reading {file}: {e}")
+            logger.error(f"Error reading {file}: {e}")

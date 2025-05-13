@@ -1,6 +1,6 @@
 import time
-import logging
-from packaging import version
+
+from .util import logger
 
 # Imports for ASE backend
 from ase.optimize import BFGS, FIRE
@@ -10,10 +10,9 @@ from pyscf.geomopt import geometric_solver
 try:
     # check if GPU4PySCF is available
     from gpu4pyscf.dft import rks, uks
-    logging.info("Using GPU-accelerated PySCF.\n")
+    logger.info("Using GPU-accelerated PySCF.\n")
 except (ImportError, AttributeError):
-    logging.info(
-        "GPU4PySCF not available, falling back to normal CPU PySCF.\n")
+    logger.info("GPU4PySCF not available, falling back to normal CPU PySCF.\n")
     from pyscf.dft import rks, uks
 
 from .common import Structure, COORDINATE_UNIT
@@ -38,7 +37,7 @@ def optimize_by_aimnet2(st: Structure, options: ASEOption) -> Structure:
         err_msg = (
             "AIMNet2 calculator is not available or not set up correctly. "
             "Please install the required package.")
-        logging.error(err_msg)
+        logger.error(err_msg)
         raise ImportError(err_msg)
 
     # Attach AIMNet2 calculator to the molecule
@@ -149,7 +148,7 @@ def optimize_by_pyscf(st: Structure,
         raise RuntimeError(
             f"Geometry optimization did not converge for molecule {st.unique_id} with SMILES {st.smiles}"
         )
-    logging.info(
+    logger.info(
         f"{st.smiles} (id={st.unique_id}): Geometry optimization converged.")
 
     # Update the input structure with the optimized coordinates

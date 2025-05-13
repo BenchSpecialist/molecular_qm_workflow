@@ -1,5 +1,4 @@
 import os
-import logging
 from pathlib import Path
 from typing import Callable
 from functools import partial
@@ -10,6 +9,7 @@ from ..smiles_util import smiles_to_3d_structures_by_rdkit
 from .. import optimize
 from ..property import get_properties_neutral
 from ..structure_io import write_molecule_property, write_structure_atom_property
+from ..util import logger
 
 from .io import read_smiles, read_xyz_dir
 
@@ -37,7 +37,7 @@ def run_one_molecule(smiles_or_st: str | Structure, opt_func: Callable,
         try:
             st = smiles_to_3d_structures_by_rdkit(smiles)
         except Exception as e:
-            logging.error(f"Error generating 3D structure for {smiles}: {e}")
+            logger.error(f"Error generating 3D structure for {smiles}: {e}")
             return
     else:
         raise ValueError(
@@ -47,7 +47,7 @@ def run_one_molecule(smiles_or_st: str | Structure, opt_func: Callable,
     try:
         st = opt_func(st)
     except Exception as e:
-        logging.error(
+        logger.error(
             f"Error optimizing geometry for {st.unique_id} (smiles: {st.smiles}): {e}"
         )
         return
@@ -56,7 +56,7 @@ def run_one_molecule(smiles_or_st: str | Structure, opt_func: Callable,
     try:
         st = prop_func(st)
     except Exception as e:
-        logging.error(
+        logger.error(
             f"Error calculating properties for {st.unique_id} (smiles: {st.smiles}): {e}"
         )
 
@@ -102,14 +102,14 @@ def run_one_batch(inputs: list[str] | list[Structure],
 
 
 def run_from_config_settings(settings: PipelineSettings) -> None:
-    logging.info(outfile_doc)
+    logger.info(outfile_doc)
 
     # Read input from config
     input_path = Path(settings.input_file_or_dir)
     if input_path.is_file():
         # type: list[str]
         inputs = read_smiles(input_path)
-        logging.info(f"Read {len(inputs)} SMILES from {input_path}")
+        logger.info(f"Read {len(inputs)} SMILES from {input_path}")
     else:
         # type: list[Structure]
         inputs = list(read_xyz_dir(input_path))

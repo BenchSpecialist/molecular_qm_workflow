@@ -1,16 +1,17 @@
 import time
-import logging
 import numpy as np
+
+from ..util import logger
+
 try:
     from gpu4pyscf.dft import rks, uks
     from gpu4pyscf.qmmm import chelpg
     _USE_GPU = True
-    logging.info("Using GPU-accelerated PySCF.\n")
+    logger.info("Using GPU-accelerated PySCF.\n")
 except (ImportError, AttributeError):
     from pyscf.dft import rks, uks
     _USE_GPU = False
-    logging.info(
-        "GPU4PySCF not available, falling back to normal CPU PySCF.\n")
+    logger.info("GPU4PySCF not available, falling back to normal CPU PySCF.\n")
 
 from ..common import Structure
 from ..constants import HARTREE_TO_EV
@@ -150,7 +151,7 @@ def get_properties_neutral(st: Structure,
         chelpg_charges = chelpg.eval_chelpg_layer_gpu(mf).get()
         st.atom_property[CHELPG_CHARGE_KEY] = chelpg_charges
     else:
-        logging.warning(
+        logger.warning(
             "CHELPG charges and ESP calculations are not available without GPU."
         )
 
@@ -159,6 +160,6 @@ def get_properties_neutral(st: Structure,
     st.atomic_numbers = [mol.atom_charge(i) for i in range(mol.natm)]
 
     st.metadata['dft_prop_calc_duration'] = time.perf_counter() - t_start
-    logging.info(
+    logger.info(
         f"{st.smiles} (id={st.unique_id}): Property calculations done.")
     return st

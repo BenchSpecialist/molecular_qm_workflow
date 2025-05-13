@@ -1,6 +1,19 @@
 import time
 import subprocess
 from functools import wraps
+from loguru import logger
+
+# Remove the default loguru handler
+logger.remove()
+
+# Add a new handler that logs to a file with your desired format
+logger.add(
+    "mqc_pipeline.log",
+    level="DEBUG",
+    format="{time:YYYY-MM-DD HH:mm:ss} - {level} - {message}",
+    backtrace=False,  # Disable traceback unless needed
+    diagnose=False  # Disable deep inspection of tracebacks
+)
 
 
 def has_nvidia_gpu():
