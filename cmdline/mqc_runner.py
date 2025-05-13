@@ -16,8 +16,7 @@ from mqc_pipeline.workflow import pipeline
 from mqc_pipeline.workflow.io import read_smiles, read_xyz_dir
 from mqc_pipeline.settings import PipelineSettings
 
-SLURM_CMD = """
-#!/bin/bash
+SLURM_CMD = """#!/bin/bash
 
 #SBATCH --job-name={job_name}_{batch_id}
 #SBATCH --output={job_log}
@@ -31,10 +30,11 @@ SLURM_CMD = """
 
 {python_exe} << EOF
 import pickle
+from mqc_pipeline.settings import PipelineSettings
 from mqc_pipeline.workflow.pipeline import run_one_batch
 
 # Setup pydantic model directly to save time
-settings = {settings_str}
+settings_dict = {settings_str}
 
 # Load batch data
 with open("{batch_file}", "rb") as f:
@@ -188,7 +188,7 @@ def _submit_one_slurm_job(config: PipelineSettings, batch_id: int,
 
     # Get absolute paths for the script and log files
     batch_file = Path(batch_file).resolve()
-    config.input_file_or_dir = batch_file
+    config.input_file_or_dir = str(batch_file)
 
     # Create the SLURM command
     slurm_cmd = SLURM_CMD.format(job_name=config.job_name,
@@ -196,13 +196,13 @@ def _submit_one_slurm_job(config: PipelineSettings, batch_id: int,
                                  job_log=job_log,
                                  python_exe=PYTHON_EXE,
                                  settings_str=str(config.model_dump()),
-                                 batch_file=batch_file)
+                                 batch_file=str(batch_file))
 
     script_path.write_text(slurm_cmd)
 
     # Submit the job using sbatch
     try:
-        result = subprocess.run(["sbatch", script_path],
+        result = subprocess.run(["sbatch", str(script_path)],
                                 check=True,
                                 text=True,
                                 capture_output=True)

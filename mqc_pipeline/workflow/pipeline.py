@@ -1,5 +1,4 @@
 import os
-import pprint
 import logging
 from pathlib import Path
 from typing import Callable
@@ -19,8 +18,7 @@ _GPU_ID = os.environ.get("CUDA_VISIBLE_DEVICES") or 0
 MOL_PROP_BATCH_OUTFILE = "{GPU_ID}_{mol_id_of_first_mol}_molecule_property.csv"
 ATOM_PROP_OUTFILE = "{mol_id}_atom_property.csv"
 
-outfile_doc = """
-Output files are saved in the working directory with the following naming convention:
+outfile_doc = """Output files are saved in the working directory with the following naming convention:
 - {GPU_ID}_{mol_id}_molecule_property.csv:
     one file saving molecule-level properties of all molecules in the batch.
 - {mol_id}_atom_property.csv:
