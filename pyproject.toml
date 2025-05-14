@@ -23,33 +23,34 @@ keywords = ["quantum chemistry", "computational chemistry", "chemoinformatics"]
 [project.urls]
 homepage = "https://github.com/Solid-Energy-Systems/mqc_pipeline"
 
-# [project.scripts]
-# run_mqc_pipeline = "cmdline.main:run" # generate an executable `run_mqc_pipeline` in bin
-
 [tool.setuptools.packages.find]
 where = ["."]
 
 [project.optional-dependencies]
 # temporary restore the old dependencies list for GH unittests workflow
-gh_test = [
+cpu_test = [
     "pytest>=7.0.0",
     "numpy >= 1.20.0",
     "scipy>=1.6.0",
     "pandas>=2.2.3",
+    "pyarrow",
     'pydantic >= 1.10',
     'PyYAML >= 6.0',
     'h5py >= 3.0',
     'rdkit',
     'ase',
-    "gpu4pyscf-cuda12x",
-    "cutensor-cu12",
+    'pyscf > 2.5.0',
+    'geometric', # for geometry optimization
+    "loguru", # for logging
 ]
 dev = [
     "pytest>=7.0.0",
 ]
-# Example use: pip install .[cuda]
-cuda = [
+# Example use: pip install .[gpu]
+gpu = [
     # Compatible with CUDA Version: 12.4
+    "gpu4pyscf-cuda12x",
+    "cutensor-cu12",
     "torch==2.6.0",
     "torchvision==0.21.0",
     "torchaudio==2.6.0",

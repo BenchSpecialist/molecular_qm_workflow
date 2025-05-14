@@ -1,14 +1,26 @@
 import time
-import logging
 import numpy as np
-from gpu4pyscf.dft import rks, uks
-from gpu4pyscf.qmmm import chelpg
+
+from ..util import logger
+
+try:
+    from gpu4pyscf.dft import rks, uks
+    from gpu4pyscf.qmmm import chelpg
+    _USE_GPU = True
+    logger.info("Using GPU-accelerated PySCF.")
+except (ImportError, AttributeError):
+    from pyscf.dft import rks, uks
+    _USE_GPU = False
+    logger.info("GPU4PySCF not available, falling back to normal CPU PySCF.")
 
 from ..common import Structure
 from ..constants import HARTREE_TO_EV
 from ..settings import PySCFOption, ESPGridsOption
 
 from .esp import generate_esp_grids, get_esp_range
+from .keys import (DFT_ENERGY_KEY, HOMO_KEY, LUMO_KEY, ESP_MIN_KEY,
+                   ESP_MAX_KEY, DIPOLE_X_KEY, DIPOLE_Y_KEY, DIPOLE_Z_KEY,
+                   DFT_FORCES_KEY, CHELPG_CHARGE_KEY)
 
 
 def _is_scf_done(mf_obj) -> bool:
@@ -30,10 +42,9 @@ def get_quadrupole_moment(
 
     :return: Quadrupole moment components (Qxx, Qyy, Qzz, Qxy).
     """
-    if _is_scf_done(mf_obj):
+    if not _is_scf_done(mf_obj):
         raise RuntimeError(
-            "Quadrupole cal error: No SCF calculation performed. Please run SCF first."
-        )
+            "Quadrupole: No SCF calculation performed. Please run SCF first.")
 
     # PySCF returns the traceless quadrupole moment as a full symmetric matrix;
     # only upper or lower triangle is needed
@@ -44,6 +55,38 @@ def get_quadrupole_moment(
     qyz = float(quad_moment[1, 2])
 
     return qxx, qyy, qzz, qxy, qxz, qyz
+
+
+def get_default_properties(st: Structure, mf, rdm1) -> Structure:
+    """
+    Get default properties for the given structure. This function wraps calculations
+    of shared properties among neutral solvent and ions, including:
+    Total electronic energy (Hartree), HOMO (eV), LUMO (eV), dipole (Debye).
+
+    :param st: Structure object containing the molecule information.
+    :param mf: PySCF mean-field object.
+    :param rdm1: np.ndarray represents one-body density matrix
+
+    :return: Structure object with populated `property` attribute.
+    """
+    if not _is_scf_done(mf):
+        raise RuntimeError(
+            "Default Properties: No SCF calculation performed. Please run SCF first."
+        )
+
+    # Get the total SCF energy
+    st.property[DFT_ENERGY_KEY] = float(mf.e_tot)
+
+    # Get HOMO and LUMO energies (neutral species only) in eV.
+    st.property[HOMO_KEY] = float(
+        mf.mo_energy[mf.mo_occ > 0][-1]) * HARTREE_TO_EV
+    st.property[LUMO_KEY] = float(
+        mf.mo_energy[mf.mo_occ == 0][0]) * HARTREE_TO_EV
+
+    # Get dipole
+    st.property[DIPOLE_X_KEY], st.property[DIPOLE_Y_KEY], st.property[
+        DIPOLE_Z_KEY] = mf.dip_moment(unit='Debye', dm=rdm1)
+    return st
 
 
 def get_properties_neutral(st: Structure,
@@ -62,7 +105,6 @@ def get_properties_neutral(st: Structure,
 
     :return: Structure object with populated `property` attribute.
     """
-    assert st.charge == 0, "This function is for neutral molecules only."
     t_start = time.perf_counter()
 
     mol = st.to_pyscf_mole(basis=pyscf_options.basis)
@@ -80,37 +122,41 @@ def get_properties_neutral(st: Structure,
     # Run SCF calculation
     mf.kernel()
 
-    # Get the total SCF energy
-    st.property['energy_hartree'] = float(mf.e_tot)
-
-    # Get HOMO and LUMO energies (neutral species only) in eV.
-    st.property['homo_eV'] = float(
-        mf.mo_energy[mf.mo_occ > 0][-1]) * HARTREE_TO_EV
-    st.property['lumo_eV'] = float(
-        mf.mo_energy[mf.mo_occ == 0][0]) * HARTREE_TO_EV
-
-    # Compute one-body reduced density matrix for dipole, electrostatic potential calculations
+    # Compute one-body reduced density matrix, which is used in:
+    # - electrostatic potential (ESP) calculations
+    # - dipole, [quadrupole] calculations
     rdm1 = mf.make_rdm1()
-    st.property['dipole_x_debye'], st.property['dipole_y_debye'], st.property[
-        'dipole_z_debye'] = mf.dip_moment(unit='Debye', dm=rdm1).tolist()
 
-    # Generate grids for ESP calculations
-    grids = generate_esp_grids(mol,
-                               rcut=esp_options.solvent_accessible_region,
-                               space=esp_options.grid_spacing,
-                               solvent_probe=esp_options.probe_depth)
-    st.property['esp_min_eV'], st.property['esp_max_eV'] = get_esp_range(
-        mol, grids, one_rdm=rdm1)
+    # Get default properties: e_tot, HOMO, LUMO, dipole
+    st = get_default_properties(st, mf, rdm1)
 
     if return_gradient:
         gradients_arr = mf.Gradients().kernel()
-        st.save_gradients(gradients_arr)
+        st.save_gradients(gradients_arr, prop_key=DFT_FORCES_KEY)
 
-    # Evaluate CHELPG charges and transfers data from GPU (cupy) to CPU (numpy)
-    chelpg_charges = chelpg.eval_chelpg_layer_gpu(mf).get()
-    st.save_charges(chelpg_charges, prop_key='chelpg_charge')
+    # ESP and CHELPG charges calculations can only run on GPUs
+    if _USE_GPU:
+        # Generate grids for ESP calculations
+        grids = generate_esp_grids(mol,
+                                   rcut=esp_options.solvent_accessible_region,
+                                   space=esp_options.grid_spacing,
+                                   solvent_probe=esp_options.probe_depth)
+        st.property[ESP_MIN_KEY], st.property[ESP_MAX_KEY] = get_esp_range(
+            mol, grids, one_rdm=rdm1)
+
+        # Evaluate CHELPG charges and transfers data from GPU (cupy) to CPU (numpy)
+        # CHELPG method fits atomic charges to reproduce ESP at a number of points
+        # around the molecule.
+        chelpg_charges = chelpg.eval_chelpg_layer_gpu(mf).get()
+        st.atom_property[CHELPG_CHARGE_KEY] = chelpg_charges
+    else:
+        logger.warning(
+            "CHELPG charges and ESP calculations are not available without GPU."
+        )
+
+    # PySCF is not expected to change the order of atoms, but we update it just in case
+    st.elements = [mol.atom_symbol(i) for i in range(mol.natm)]
+    st.atomic_numbers = [mol.atom_charge(i) for i in range(mol.natm)]
 
     st.metadata['dft_prop_calc_duration'] = time.perf_counter() - t_start
-    logging.info(
-        f"{st.smiles} (id={st.unique_id}): Property calculations done.")
     return st

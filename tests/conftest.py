@@ -3,6 +3,7 @@ import shutil
 import tempfile
 import pytest
 from mqc_pipeline import Structure
+from mqc_pipeline.property import DFT_ENERGY_KEY, HOMO_KEY, LUMO_KEY
 
 
 @pytest.fixture(autouse=True)
@@ -30,7 +31,11 @@ def methane_st():
                      unique_id='12345678901',
                      smiles='C',
                      property={
-                         'energy': -40.528,
+                         DFT_ENERGY_KEY: -40.528,
+                         HOMO_KEY: -10.776,
+                         LUMO_KEY: 1.442,
+                     },
+                     atom_property={
                          'charges': [0.0, 0.0, 0.0, 0.0, 0.0],
                      })
 
@@ -43,6 +48,10 @@ def n2_st():
                      unique_id='12345678902',
                      smiles='N#N',
                      property={
-                         'energy': -109.556,
+                         DFT_ENERGY_KEY: -109.556,
+                         HOMO_KEY: -11.737,
+                         LUMO_KEY: -0.715,
+                     },
+                     atom_property={
                          'charges': [0.0, 0.0],
                      })

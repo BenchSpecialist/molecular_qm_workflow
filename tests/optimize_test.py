@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from mqc_pipeline import optimize, Structure
-from mqc_pipeline.constants import DFT_ENERGY_KEY, DFT_FORCES_KEY
+from mqc_pipeline.property import DFT_ENERGY_KEY, DFT_FORCES_KEY
 from mqc_pipeline.util import has_nvidia_gpu
 
 
@@ -21,5 +21,6 @@ def test_optimize_by_pyscf():
     options = optimize.PySCFOption()
     st_opt = optimize.optimize_by_pyscf(st, options)
     assert not np.allclose(st_opt.xyz, xyz_before)
-    assert st_opt.property[DFT_ENERGY_KEY] is not None
-    assert st_opt.property[DFT_FORCES_KEY] is not None
+
+    for f_prop_key in f'{DFT_FORCES_KEY}_x', f'{DFT_FORCES_KEY}_y', f'{DFT_FORCES_KEY}_z':
+        assert st_opt.atom_property.get(f_prop_key) is not None

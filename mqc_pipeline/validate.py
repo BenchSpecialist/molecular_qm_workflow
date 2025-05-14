@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
+from .settings import ValidationError
+
 CSV_COL_NAMES = ("smiles", "Smiles", "SMILES")
 
 PathLike = str | Path
@@ -53,3 +55,43 @@ def is_txt_single_column(txt_path: PathLike, first_n_rows: int = 5) -> bool:
     except Exception as e:
         print(f"Error reading file: {e}")
         return False
+
+
+def validate_input(input_file_or_dir: PathLike) -> str:
+    """
+    Validate the input file or directory.
+    """
+    input_file_or_dir = Path(input_file_or_dir)
+    if not Path(input_file_or_dir).exists():
+        raise ValidationError(
+            f"Input file or directory does not exist: {input_file_or_dir}")
+
+    # Validate single-file input (contains SMILES strings)
+    if input_file_or_dir.is_file():
+        if input_file_or_dir.suffix not in ['.txt', '.csv']:
+            raise ValidationError("Input file must be a .txt or .csv file.")
+        # Check if the file has a single column
+        if input_file_or_dir.suffix == '.csv' and (
+                not is_csv_single_column(input_file_or_dir)):
+            raise ValidationError(
+                "CSV file must contain a single column of smiles strings.")
+
+        if input_file_or_dir.suffix == '.txt' and (
+                not is_txt_single_column(input_file_or_dir)):
+            raise ValidationError(
+                "Text file must contain a single column of smiles strings.")
+    # Validate directory input (XYZ files)
+    elif input_file_or_dir.is_dir():
+        # Check for the first xyz file only (stopping at first match)
+        xyz_files = input_file_or_dir.glob("*.xyz")
+        try:
+            next(xyz_files)
+        except StopIteration:
+            raise ValidationError(
+                "Directory must contain at least one .xyz file.")
+    else:
+        raise ValidationError(
+            "Input must be a valid .txt, .csv file or directory containing xyz files."
+        )
+
+    return str(input_file_or_dir)

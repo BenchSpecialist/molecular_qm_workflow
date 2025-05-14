@@ -1,9 +1,8 @@
 import yaml
 from pathlib import Path
-from pydantic import BaseModel, Field, field_validator
+from typing import Literal
 from dataclasses import dataclass
-
-from .file_util import is_csv_single_column, is_txt_single_column
+from pydantic import BaseModel, Field, field_validator
 
 ### Module constants ###
 METHOD_AIMNet2 = 'AIMNET2'
@@ -19,6 +18,8 @@ _DEFAULT_FUNCTIONAL = 'b3lypg'
 _DEFAULT_SCF_MAX_CYCLE = 100  # default: 50 in pyscf
 _DEFAULT_SCF_CONV_TOL = 1e-09  # default: 1e-09 in pyscf
 _DEFAULT_GRIDS_LEVEL = 3  # default: 3 in pyscf
+
+SUPPORTED_COLUMNAR_FILE_FORMATS = ('csv', 'parquet')
 
 
 class ValidationError(Exception):
@@ -83,21 +84,27 @@ class PipelineSettings(BaseModel):
     >>> config = PipelineSettings(**user_dict)
     >>> config_dict = config.model_dump() # Convert to a dictionary
     """
-    # Required settings
+    # Input and job settings
     input_file_or_dir: str = Field(
         description=
         "Path to a text/csv file that contains a single column of smiles strings. "
         "Alternatively, a directory containing multiple xyz files.")
 
-    num_gpus: int = Field(
+    num_jobs: int = Field(
         default=1,
-        description="Number of GPUs to use for the calculations. Default is 1."
+        ge=0,
+        description="Number of SLURM batch jobs to launch. "
+        "If set to 0, the pipeline will run locally without SLURM orchestration."
     )
 
+    job_name: str = Field(
+        default="mqc_pipeline",
+        description="Name of the SLURM job. Only relevant when num_jobs > 0.")
+
+    # Calculation parameters
     geometry_opt_method: str = Field(
         default=METHOD_DFT, description="Method for geometry optimization.")
 
-    # Optional settings
     ## ASE related fields: used only when geometry_opt_method is 'aimnet2'
     ase_optimizer_name: str = Field(
         default=BFGS_OPTIMIZER,
@@ -141,6 +148,24 @@ class PipelineSettings(BaseModel):
     esp_probe_depth: float = Field(
         default=1.1,
         description="Probe depth for ESP calculations in angstrom")
+
+    # Output settings
+    output_dir: str = Field(
+        default=Path.cwd().resolve(),
+        description="Directory to save the output files. "
+        "The default is the current working directory that cmdline unitlity is called."
+    )
+
+    output_file_format: Literal["csv", "parquet", "parq"] = Field(
+        default="csv",
+        description=
+        "Output file format to write molecule-level and atom-level properties. "
+        f"Supported formats: {', '.join(SUPPORTED_COLUMNAR_FILE_FORMATS)}. Default is csv."
+    )
+
+    progress_log_interval: int = Field(
+        default=10,
+        description="Interval for logging progress during batch processing.")
 
     def to_ase_options(self) -> ASEOption:
         """
@@ -200,6 +225,19 @@ class PipelineSettings(BaseModel):
 
         return "\n".join(yaml_lines)
 
+    def to_recreate_string(self) -> str:
+        """
+        Return a string that can be copied and pasted to recreate this model.
+        The returned string is valid Python code that can be executed to create
+        an identical instance of the model.
+        """
+        lines = ["PipelineSettings("]
+        for key, value in self.model_dump().items():
+            lines.append(f"    {key}={repr(value)},")
+        lines.append(")")
+
+        return "\n".join(lines)
+
     @classmethod
     def from_yaml(cls, yaml_path: str | Path) -> "PipelineSettings":
         """
@@ -215,43 +253,14 @@ class PipelineSettings(BaseModel):
         return cls(**config_dict)
 
     @field_validator('input_file_or_dir')
-    def validate_input(cls, input_file_or_dir: str) -> str:
-        input_file_or_dir = Path(input_file_or_dir)
-        # Check existence of the file or directory
-        if not input_file_or_dir.exists():
+    def validate_input_existence(cls, input_file_or_dir: str) -> str:
+        # Note that `mqc_pipeline.validate.validate_input` function provides more
+        # detailed validation for the input file or directory.
+        # The logic is separeted to make the current model more flexible in setting
+        # up batching jobs.
+        if not Path(input_file_or_dir).exists():
             raise ValidationError(
                 f"Input file or directory does not exist: {input_file_or_dir}")
-
-        # Validate single-file input (contains SMILES strings)
-        if input_file_or_dir.is_file():
-            if input_file_or_dir.suffix not in ['.txt', '.csv']:
-                raise ValidationError(
-                    "Input file must be a .txt or .csv file.")
-            # Check if the file has a single column
-            if input_file_or_dir.suffix == '.csv' and (
-                    not is_csv_single_column(input_file_or_dir)):
-                raise ValidationError(
-                    "CSV file must contain a single column of smiles strings.")
-
-            if input_file_or_dir.suffix == '.txt' and (
-                    not is_txt_single_column(input_file_or_dir)):
-                raise ValidationError(
-                    "Text file must contain a single column of smiles strings."
-                )
-        # Validate directory input (XYZ files)
-        elif input_file_or_dir.is_dir():
-            # Check for the first xyz file only (stopping at first match)
-            xyz_files = input_file_or_dir.glob("*.xyz")
-            try:
-                next(xyz_files)
-            except StopIteration:
-                raise ValidationError(
-                    "Directory must contain at least one .xyz file.")
-        else:
-            raise ValidationError(
-                "Input must be a valid .txt, .csv file or directory containing xyz files."
-            )
-
         return str(input_file_or_dir)
 
     @field_validator('geometry_opt_method')

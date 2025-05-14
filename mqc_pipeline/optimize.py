@@ -1,34 +1,23 @@
 import time
-import logging
-from packaging import version
+
+from .util import logger
 
 # Imports for ASE backend
 from ase.optimize import BFGS, FIRE
-try:
-    from aimnet2calc import AIMNet2ASE
-except (ImportError, OSError):
-    AIMNet2ASE = None
-    logging.info(
-        "AIMNet2 calculator is not available or not set up correctly. "
-        "Please install the required package.")
 
 # Imports for pyscf backend
-import pyscf
 from pyscf.geomopt import geometric_solver
-assert version.parse(
-    pyscf.__version__) > version.parse("2.5.0"), "Version must be > 2.5.0"
-
 try:
     # check if GPU4PySCF is available
     from gpu4pyscf.dft import rks, uks
-    logging.info("Using GPU-accelerated PySCF.\n")
-except ImportError:
-    logging.info(
-        "GPU4PySCF not available, falling back to normal CPU PySCF.\n")
+    logger.info("Using GPU-accelerated PySCF.")
+except (ImportError, AttributeError):
+    logger.info("GPU4PySCF not available, falling back to normal CPU PySCF.")
     from pyscf.dft import rks, uks
 
 from .common import Structure, COORDINATE_UNIT
-from .constants import EV_TO_HARTREE, DFT_ENERGY_KEY
+from .constants import EV_TO_HARTREE
+from .property import DFT_ENERGY_KEY, DFT_FORCES_KEY
 from .settings import ASEOption, PySCFOption, METHOD_AIMNet2
 
 OPTIMIZER_NAME_TO_CLASS = {'BFGS': BFGS, 'FIRE': FIRE}
@@ -42,6 +31,15 @@ def optimize_by_aimnet2(st: Structure, options: ASEOption) -> Structure:
     :param st: Structure object containing the molecule information.
     :param options: ASEOption object containing optimization parameters.
     """
+    try:
+        from aimnet2calc import AIMNet2ASE
+    except (ImportError, OSError):
+        err_msg = (
+            "AIMNet2 calculator is not available or not set up correctly. "
+            "Please install the required package.")
+        logger.error(err_msg)
+        raise ImportError(err_msg)
+
     # Attach AIMNet2 calculator to the molecule
     ase_atoms = st.to_ase_atoms()
     ase_atoms.calc = AIMNet2ASE(base_calc=METHOD_AIMNet2,
@@ -73,11 +71,10 @@ def optimize_by_aimnet2(st: Structure, options: ASEOption) -> Structure:
         ase_atoms.get_potential_energy()) * EV_TO_HARTREE
     st.save_gradients(ase_atoms.get_forces(),
                       prop_key=f"{METHOD_AIMNet2}_forces")
-    st.save_charges(ase_atoms.calc.results.get('charges', None),
-                    prop_key=f"{METHOD_AIMNet2}_charges")
+    st.atom_property[f"{METHOD_AIMNet2}_charges"] = ase_atoms.calc.results.get(
+        'charges', None)
 
-    if st.atomic_numbers is None:
-        st.atomic_numbers = ase_atoms.get_atomic_numbers().tolist()
+    st.atomic_numbers = ase_atoms.get_atomic_numbers().tolist()
 
     return st
 
@@ -151,14 +148,20 @@ def optimize_by_pyscf(st: Structure,
         raise RuntimeError(
             f"Geometry optimization did not converge for molecule {st.unique_id} with SMILES {st.smiles}"
         )
-    logging.info(
-        f"{st.smiles} (id={st.unique_id}): Geometry optimization converged.")
 
     # Update the input structure with the optimized coordinates
     st.xyz = mol_optimized.atom_coords(unit=COORDINATE_UNIT)
 
     # Save the energy and forces of the optimized geometry
     st.property[DFT_ENERGY_KEY] = float(energies[-1])
-    st.save_gradients(gradients[-1])
+    st.save_gradients(gradients[-1], prop_key=DFT_FORCES_KEY)
+
+    # PySCF is not expected to change the order of atoms, but we update it just in case
+    st.elements = [
+        mol_optimized.atom_symbol(i) for i in range(mol_optimized.natm)
+    ]
+    st.atomic_numbers = [
+        mol_optimized.atom_charge(i) for i in range(mol_optimized.natm)
+    ]
 
     return st

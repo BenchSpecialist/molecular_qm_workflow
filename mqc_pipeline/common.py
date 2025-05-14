@@ -4,22 +4,18 @@ This module contains:
   conversion to and from different formats (ASE, RDKit, PySCF). It's the central
   data structure for the pipeline, which save calculated geometries, properties
   and metadata.
-- Utility functions
-    - conversion between RDKit and PySCF representations.
+- Utility functions:
     - calculation of unpaired electrons from a RDKit molecule.
 """
 
 import numpy as np
 from uuid import uuid4
-from dataclasses import dataclass
 from typing import Optional
+from dataclasses import dataclass
 
 from rdkit import Chem
-from rdkit.Chem import rdDetermineBonds
 from ase import Atoms
 import pyscf
-
-from .constants import DFT_FORCES_KEY
 
 COORDINATE_UNIT = 'angstrom'
 _DEFAULT_CHARGE = 0.
@@ -30,17 +26,17 @@ _UNIQUE_KEY_LENGTH = 11
 @dataclass(slots=True)  # eliminates the __dict__ to reduce memory overhead
 class Structure:
     """
-    Container to hold information of a molecule.
+    Container to hold information of a 3D molecule.
     """
     elements: list[str]
     xyz: np.ndarray  # shape (n_atoms, 3)
     atomic_numbers: Optional[list[int]] = None
-    smiles: Optional[str] = None
+    smiles: str = " "
     unique_id: Optional[str] = None
     charge: int = _DEFAULT_CHARGE
     multiplicity: int = _DEFAULT_MULTIPLICITY
     property: Optional[dict] = None  # save molecule-level properties
-    atom_property: Optional[list] = None  # save atom-level properties
+    atom_property: Optional[dict] = None  # save atom-level properties
     metadata: Optional[dict] = None  # save timings, optimization info, etc.
 
     def __post_init__(self):
@@ -55,32 +51,20 @@ class Structure:
         if self.property is None:
             self.property = {}
         if self.atom_property is None:
-            # Initialize atom_property and add atom symbol
-            self.atom_property = [
-                {'element': atom_symbol}
-                for atom_symbol in self.elements] #yapf:disable
+            # Values in atom_property dict should be lists/1D arrays, in which
+            # the element order is same as the order of atom symbols in the
+            # `self.elements` list.
+            self.atom_property = {}
         if self.metadata is None:
             self.metadata = {}
 
-    def save_gradients(self,
-                       gradients_arr: np.ndarray,
-                       prop_key: str = DFT_FORCES_KEY):
+    def save_gradients(self, gradients_arr: np.ndarray, prop_key: str):
         """
-        Save array that contains gradients for all atoms into per-atom dictionary
-        :param gradients_arr: (n_atoms, 3) shape, gradients of each atom along x, y, z
+        Save gradients per-axis into the atom_property dictionary.
         """
-        for i, _ in enumerate(self.elements):
-            self.atom_property[i][prop_key] = gradients_arr[i].tolist()
-
-    def save_charges(self, charges_arr: np.ndarray, prop_key: str):
-        """
-        Save array that contains charges for all atoms into per-atom dictionary
-        :param charges_arr: (n_atoms,) shape, one charge value for each atom
-        :param prop_key: key to save the charge value; charges computed with different
-                         methods can be saved with different keys
-        """
-        for i, _ in enumerate(self.elements):
-            self.atom_property[i][prop_key] = float(charges_arr[i])
+        self.atom_property[f'{prop_key}_x'] = gradients_arr[:, 0].tolist()
+        self.atom_property[f'{prop_key}_y'] = gradients_arr[:, 1].tolist()
+        self.atom_property[f'{prop_key}_z'] = gradients_arr[:, 2].tolist()
 
     def from_ase_atoms(cls, ase_atoms: Atoms):
         return cls(elements=ase_atoms.get_chemical_symbols(),

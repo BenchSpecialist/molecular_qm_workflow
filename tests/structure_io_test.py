@@ -1,7 +1,9 @@
 import pytest
 import numpy as np
+import pandas as pd
+import pyarrow.parquet as pq
 from mqc_pipeline import structure_io, Structure
-from mqc_pipeline.constants import DFT_ENERGY_KEY
+from mqc_pipeline.property import DFT_ENERGY_KEY
 
 
 def test_xyz_io(tmp_cwd):
@@ -23,7 +25,7 @@ def test_xyz_io(tmp_cwd):
     structure_io.write_xyz(st, xyz_file)
 
     # Read the structure back from the XYZ file
-    st_loaded = structure_io.read_xyz(xyz_file)
+    st_loaded = structure_io.read_xyz(xyz_file, parse_comment=True)
 
     # xyz format loses some information in the conversion, so we only check
     # relevant attributes
@@ -65,3 +67,45 @@ def test_multiple_structures_io(file_format, methane_st, n2_st, tmp_cwd):
 
     # Test that the original and loaded structures are equal
     assert sts_list == loaded_sts_list
+
+
+def test_write_molecule_property(methane_st, n2_st):
+    sts = [methane_st, n2_st]
+    csv_file = "mol.csv"
+    # Test writing molecule-level properties finishes without error
+    structure_io.write_molecule_property(sts, csv_file)
+    data = pd.read_csv(csv_file)
+    # Contains 2 rows (one for each molecule)
+    assert data.shape[0] == len(sts)
+
+    pq_file = "mol.parquet"
+    structure_io.write_molecule_property(sts, pq_file)
+    table = pq.read_table(pq_file)
+    # Contains 2 rows (one for each molecule)
+    assert table.shape[0] == len(sts)
+
+
+def test_write_atom_property(methane_st, n2_st):
+    sts = [methane_st, n2_st]
+    csv_file = "atom.csv"
+
+    num_rows = len(methane_st.elements) + len(n2_st.elements)
+
+    # Test writing atom-level properties finishes without error
+    structure_io.write_atom_property(sts, csv_file)
+    data = pd.read_csv(csv_file)
+    print(data)
+    assert data.shape[0] == num_rows
+
+    pq_file = "atom.parquet"
+    parq_metadata = {
+        'dft_functional': 'b3lypg',
+        'basis': '6-311g*',
+    }
+    structure_io.write_atom_property(sts, pq_file, parq_metadata)
+    table = pq.read_table(pq_file)
+    assert data.shape[0] == num_rows
+    assert table.schema.metadata == {
+        str(k).encode('utf-8'): str(v).encode('utf-8')
+        for k, v in parq_metadata.items()
+    }

@@ -6,7 +6,3 @@ EV_TO_HARTREE = 1 / HARTREE_TO_EV
 
 # unit of `BOHR` is angstroms per Bohr
 ANGSTROM_TO_BOHR = 1.0 / BOHR
-
-# property keys
-DFT_ENERGY_KEY = "energy_hartree"
-DFT_FORCES_KEY = "forces"

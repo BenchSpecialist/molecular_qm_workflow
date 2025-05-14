@@ -1,9 +1,7 @@
 import time
-import logging
 import numpy as np
 from pathlib import Path
 
-import pyscf
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Chem import rdDetermineBonds
@@ -11,6 +9,7 @@ from rdkit.Chem.rdMolTransforms import GetBondLength
 
 from .common import Structure, get_unpaired_electrons
 from .adaptors import get_adaptor
+from .util import logger
 
 MAX_ATTEMPTS_EMBED = 100
 
@@ -46,22 +45,22 @@ def smiles_to_3d_structures_by_rdkit(smiles: str,
     # Embed the molecule
     for attempt in range(max_attempts):
         if AllChem.EmbedMolecule(mol, params) == 0:
-            logging.info(f"Embedding succeeded: {smiles}")
             break
 
         # Within the same attempt, try disabling chirality if embedding fails
         # due to chirality constraints.
         params.enforceChirality = False
         if AllChem.EmbedMolecule(mol, params) == 0:
-            logging.info(
-                f"Embedding succeeded after disabling chirality: {smiles}")
+            logger.info(
+                f"{smiles}: Embedding succeeded after disabling chirality.")
             # Reset the chirality flag for the next attempt
             params.enforceChirality = True
             break
 
         if attempt == max_attempts - 1:
-            raise ValueError(
-                f"Failed to embed after {max_attempts} attempts: {smiles}")
+            err_msg = f"{smiles}: Embedding failed after {max_attempts} attempts."
+            logger.error(err_msg)
+            raise RuntimeError(err_msg)
 
     # Get conformer with 3D coordinates
     conf = mol.GetConformer()
@@ -73,9 +72,9 @@ def smiles_to_3d_structures_by_rdkit(smiles: str,
         for bond in mol.GetBonds()
     ]
     if any(distance < 0.5 or distance > 3.0 for distance in bond_distances):
-        raise ValueError(
-            f"Unphysical bond distances in the RDKit-generated 3D structure for {smiles}."
-        )
+        bd_err_msg = f"{smiles}: Unphysical bond distances in the RDKit conformer.\n{bond_distances}"
+        logger.error(bd_err_msg)
+        raise RuntimeError(bd_err_msg)
 
     # Extract coordinates
     elements = [atom.GetSymbol() for atom in mol.GetAtoms()]

@@ -14,7 +14,7 @@ from mqc_pipeline.settings import (PipelineSettings, ASEOption, PySCFOption,
 def test_minimal_initialization(tmp_cwd):
     inp_name = "smiles.txt"
     # Create the input file to pass the input validation
-    Path(inp_name).write_text("C\n")
+    Path(inp_name).touch()
     user_dict = {"input_file_or_dir": inp_name}
     PipelineSettings(**user_dict)
 
@@ -32,13 +32,12 @@ def test_validate_input_file_or_dir(tmp_cwd):
 
     # Test with a directory
     xyz_dir = "input_xyz_dir"
-    Path(xyz_dir).mkdir(exist_ok=True)
     with pytest.raises(ValidationError,
-                       match="Directory must contain at least one .xyz file"):
+                       match="Input file or directory does not exist:"):
         PipelineSettings(input_file_or_dir=xyz_dir)
-    # Create one .xyz file in the directory and check if the validation passes
-    xyz_file = Path(xyz_dir) / "test.xyz"
-    xyz_file.touch()
+
+    Path(xyz_dir).mkdir(exist_ok=True)
+    # Create the directory and check if the validation passes
     PipelineSettings(input_file_or_dir=xyz_dir)
 
 

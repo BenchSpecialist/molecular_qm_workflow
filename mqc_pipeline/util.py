@@ -1,6 +1,42 @@
+import os
+import sys
 import time
+import logging
 import subprocess
+from loguru import logger
 from functools import wraps
+from contextlib import contextmanager
+
+# Remove the default loguru handler
+logger.remove()
+
+# Add a new handler that logs to a file, the saves generic information
+logger.add(
+    "mqc_pipeline.log",
+    level="DEBUG",
+    format="{time:YYYY-MM-DD HH:mm:ss} - {level} - {message}",
+    backtrace=False,  # Disable traceback unless needed
+    diagnose=False  # Disable deep inspection of tracebacks
+)
+
+
+def setup_logger(name, log_file=None, level=logging.DEBUG, stream=False):
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+
+    formatter = logging.Formatter('%(message)s')
+
+    if log_file:
+        fh = logging.FileHandler(log_file)
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
+
+    if stream:
+        sh = logging.StreamHandler(sys.stdout)
+        sh.setFormatter(formatter)
+        logger.addHandler(sh)
+
+    return logger
 
 
 def has_nvidia_gpu():
@@ -35,3 +71,18 @@ def timer(func):
         return result
 
     return wrapper
+
+
+@contextmanager
+def change_dir(new_dir: str):
+    """
+    Context manager to change the working directory.
+    """
+    new_dir = os.path.abspath(new_dir)
+    old_dir = os.getcwd()
+    os.makedirs(new_dir, exist_ok=True)
+    try:
+        os.chdir(new_dir)
+        yield
+    finally:
+        os.chdir(old_dir)
