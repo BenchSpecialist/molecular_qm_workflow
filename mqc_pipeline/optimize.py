@@ -10,9 +10,9 @@ from pyscf.geomopt import geometric_solver
 try:
     # check if GPU4PySCF is available
     from gpu4pyscf.dft import rks, uks
-    logger.info("Using GPU-accelerated PySCF.\n")
+    logger.info("Using GPU-accelerated PySCF.")
 except (ImportError, AttributeError):
-    logger.info("GPU4PySCF not available, falling back to normal CPU PySCF.\n")
+    logger.info("GPU4PySCF not available, falling back to normal CPU PySCF.")
     from pyscf.dft import rks, uks
 
 from .common import Structure, COORDINATE_UNIT
@@ -148,8 +148,6 @@ def optimize_by_pyscf(st: Structure,
         raise RuntimeError(
             f"Geometry optimization did not converge for molecule {st.unique_id} with SMILES {st.smiles}"
         )
-    logger.info(
-        f"{st.smiles} (id={st.unique_id}): Geometry optimization converged.")
 
     # Update the input structure with the optimized coordinates
     st.xyz = mol_optimized.atom_coords(unit=COORDINATE_UNIT)

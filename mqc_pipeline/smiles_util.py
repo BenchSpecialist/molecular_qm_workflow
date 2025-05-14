@@ -45,7 +45,6 @@ def smiles_to_3d_structures_by_rdkit(smiles: str,
     # Embed the molecule
     for attempt in range(max_attempts):
         if AllChem.EmbedMolecule(mol, params) == 0:
-            logger.info(f"{smiles}: Embedding succeeded.")
             break
 
         # Within the same attempt, try disabling chirality if embedding fails

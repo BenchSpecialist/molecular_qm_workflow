@@ -7,11 +7,11 @@ try:
     from gpu4pyscf.dft import rks, uks
     from gpu4pyscf.qmmm import chelpg
     _USE_GPU = True
-    logger.info("Using GPU-accelerated PySCF.\n")
+    logger.info("Using GPU-accelerated PySCF.")
 except (ImportError, AttributeError):
     from pyscf.dft import rks, uks
     _USE_GPU = False
-    logger.info("GPU4PySCF not available, falling back to normal CPU PySCF.\n")
+    logger.info("GPU4PySCF not available, falling back to normal CPU PySCF.")
 
 from ..common import Structure
 from ..constants import HARTREE_TO_EV
@@ -105,7 +105,6 @@ def get_properties_neutral(st: Structure,
 
     :return: Structure object with populated `property` attribute.
     """
-    assert st.charge == 0, "This function is for neutral molecules only."
     t_start = time.perf_counter()
 
     mol = st.to_pyscf_mole(basis=pyscf_options.basis)
@@ -160,6 +159,4 @@ def get_properties_neutral(st: Structure,
     st.atomic_numbers = [mol.atom_charge(i) for i in range(mol.natm)]
 
     st.metadata['dft_prop_calc_duration'] = time.perf_counter() - t_start
-    logger.info(
-        f"{st.smiles} (id={st.unique_id}): Property calculations done.")
     return st
