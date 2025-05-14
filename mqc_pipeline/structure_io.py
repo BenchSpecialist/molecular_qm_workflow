@@ -216,7 +216,9 @@ def read_xyz(xyz_path: str, parse_comment=False) -> Structure:
                          metadata={'from_xyz_file': str(xyz_path)})
 
 
-def write_molecule_property(st_or_sts: StructureType, filename: str):
+def write_molecule_property(st_or_sts: StructureType,
+                            filename: str,
+                            save_metadata=True):
     """
     Write the molecule-level properties structure properties of one or multiple
     Structure objects to a CSV or Parquet file.
@@ -229,42 +231,13 @@ def write_molecule_property(st_or_sts: StructureType, filename: str):
     else:
         sts = st_or_sts
 
-    data = {
-        shared_key: [getattr(st, shared_key) for st in sts]
-        for shared_key in SHARED_KEYS
-    }
-    # Stack st.property from multiple structures
-    mol_props = {
-        key: [st.property.get(key) for st in sts]
-        for key in MOLECULE_LEVEL_PROP_KEYS
-    }
-    data.update(mol_props)
-    df = pd.DataFrame(data)
-
-    if filename.endswith('.csv'):
-        df.to_csv(filename, index=False)
-
-    if filename.endswith(('.parquet', '.parq')):
-        # Convert to PyArrow Table
-        table = pa.Table.from_pydict(data)
-        pq.write_table(table, filename)
-
-
-def write_structure_atom_property(st: Structure, filename: str):
-    """
-    Write out the atom-level structure properties to a CSV or Parquet file.
-    """
-
-    if not filename.endswith(COLUMNAR_FILE_EXTENSIONS):
-        raise ValueError("Unsupported file format. Use .csv or .parquet")
-
-    data = {
-        'element': st.elements,
-        'x': st.xyz[:, 0],
-        'y': st.xyz[:, 1],
-        'z': st.xyz[:, 2],
-    }
-    data.update(st.atom_property)
+    # One dict per structure
+    data = []
+    for st in sts:
+        # Add shared keys: unique_id, smiles
+        row = {key: getattr(st, key) for key in SHARED_KEYS}
+        row.update(st.property)
+        data.append(row)
     df = pd.DataFrame(data)
 
     if filename.endswith('.csv'):
@@ -273,12 +246,57 @@ def write_structure_atom_property(st: Structure, filename: str):
     if filename.endswith(('.parquet', '.parq')):
         # Convert to PyArrow Table
         table = pa.Table.from_pandas(df)
-        # Add metadata
-        table_metadata = {
-            shared_key: getattr(st, shared_key)
-            for shared_key in SHARED_KEYS
-        }
+        pq.write_table(table, filename)
 
-        table = table.replace_schema_metadata(table_metadata)
+    if save_metadata:
+        mettadata_list = [st.metadata for st in sts]
+        index = [getattr(st, "unique_id") for st in sts]
+        metadata_df = pd.DataFrame(mettadata_list, index=index)
+        metadata_df.index.name = "unique_id"
+        metadata_df.to_csv('metadata.csv', index=True)
+
+
+def write_atom_property(st_or_sts: StructureType,
+                        filename: str,
+                        parq_metadata=None):
+    """
+    Write out the atom-level structure properties to a CSV or Parquet file.
+    """
+
+    if not filename.endswith(COLUMNAR_FILE_EXTENSIONS):
+        raise ValueError("Unsupported file format. Use .csv or .parquet")
+
+    if isinstance(st_or_sts, Structure):
+        sts = [st_or_sts]
+    else:
+        sts = st_or_sts
+
+    st_dfs = []
+    for st in sts:
+        data = {
+            # Add shared keys: unique_id, smiles
+            key: [getattr(st, key) for _ in range(len(st.elements))]
+            for key in SHARED_KEYS
+        }
+        data.update({
+            'element': st.elements,
+            'x': st.xyz[:, 0],
+            'y': st.xyz[:, 1],
+            'z': st.xyz[:, 2],
+        })
+        data.update(st.atom_property)
+        st_dfs.append(pd.DataFrame(data))
+
+    df = pd.concat(st_dfs, ignore_index=True)
+
+    if filename.endswith('.csv'):
+        df.to_csv(filename, index=False)
+
+    if filename.endswith(('.parquet', '.parq')):
+        # Convert to PyArrow Table
+        table = pa.Table.from_pandas(df)
+        if parq_metadata:
+            # Add metadata if given
+            table = table.replace_schema_metadata(parq_metadata)
         # Write to Parquet file
         pq.write_table(table, filename)

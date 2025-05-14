@@ -2,7 +2,6 @@ import pytest
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-from pathlib import Path
 from mqc_pipeline import structure_io, Structure
 from mqc_pipeline.property import DFT_ENERGY_KEY
 
@@ -76,27 +75,37 @@ def test_write_molecule_property(methane_st, n2_st):
     # Test writing molecule-level properties finishes without error
     structure_io.write_molecule_property(sts, csv_file)
     data = pd.read_csv(csv_file)
-    assert data.shape == (2, 10)
+    # Contains 2 rows (one for each molecule)
+    assert data.shape[0] == len(sts)
 
     pq_file = "mol.parquet"
     structure_io.write_molecule_property(sts, pq_file)
     table = pq.read_table(pq_file)
-    assert table.shape == (2, 10)
+    # Contains 2 rows (one for each molecule)
+    assert table.shape[0] == len(sts)
 
 
-def test_write_structure_atom_property(methane_st):
+def test_write_atom_property(methane_st, n2_st):
+    sts = [methane_st, n2_st]
     csv_file = "atom.csv"
 
+    num_rows = len(methane_st.elements) + len(n2_st.elements)
+
     # Test writing atom-level properties finishes without error
-    structure_io.write_structure_atom_property(methane_st, csv_file)
+    structure_io.write_atom_property(sts, csv_file)
     data = pd.read_csv(csv_file)
-    assert data.shape == (5, 5)
+    print(data)
+    assert data.shape[0] == num_rows
 
     pq_file = "atom.parquet"
-    structure_io.write_structure_atom_property(methane_st, pq_file)
+    parq_metadata = {
+        'dft_functional': 'b3lypg',
+        'basis': '6-311g*',
+    }
+    structure_io.write_atom_property(sts, pq_file, parq_metadata)
     table = pq.read_table(pq_file)
-    assert table.shape == (5, 5)
+    assert data.shape[0] == num_rows
     assert table.schema.metadata == {
-        b'smiles': b'C',
-        b'unique_id': b'12345678901'
+        str(k).encode('utf-8'): str(v).encode('utf-8')
+        for k, v in parq_metadata.items()
     }
