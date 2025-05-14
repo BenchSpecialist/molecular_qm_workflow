@@ -23,9 +23,6 @@ keywords = ["quantum chemistry", "computational chemistry", "chemoinformatics"]
 [project.urls]
 homepage = "https://github.com/Solid-Energy-Systems/mqc_pipeline"
 
-# [project.scripts]
-# run_mqc_pipeline = "cmdline.main:run" # generate an executable `run_mqc_pipeline` in bin
-
 [tool.setuptools.packages.find]
 where = ["."]
 
@@ -44,6 +41,7 @@ cpu_test = [
     'ase',
     'pyscf > 2.5.0',
     'geometric', # for geometry optimization
+    "loguru", # for logging
 ]
 dev = [
     "pytest>=7.0.0",
