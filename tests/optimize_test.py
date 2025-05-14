@@ -21,5 +21,6 @@ def test_optimize_by_pyscf():
     options = optimize.PySCFOption()
     st_opt = optimize.optimize_by_pyscf(st, options)
     assert not np.allclose(st_opt.xyz, xyz_before)
-    assert st_opt.property[DFT_ENERGY_KEY] is not None
-    assert st_opt.property[DFT_FORCES_KEY] is not None
+
+    for f_prop_key in f'{DFT_FORCES_KEY}_x', f'{DFT_FORCES_KEY}_y', f'{DFT_FORCES_KEY}_z':
+        assert st_opt.atom_property.get(f_prop_key) is not None
