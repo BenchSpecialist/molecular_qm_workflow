@@ -7,7 +7,6 @@ export PATH="/path/to/mqc_pipeline/cmdline:$PATH"
 """
 import pprint
 import pickle
-import logging
 import argparse
 import subprocess
 from pathlib import Path
@@ -15,32 +14,38 @@ from pathlib import Path
 from mqc_pipeline.workflow import pipeline
 from mqc_pipeline.workflow.io import read_smiles, read_xyz_dir
 from mqc_pipeline.settings import PipelineSettings
+from mqc_pipeline.validate import validate_input
+from mqc_pipeline.util import logger, change_dir
 
 SLURM_CMD = """#!/bin/bash
 
-#SBATCH --job-name={job_name}_{batch_id}
-#SBATCH --output={job_log}
-#SBATCH --error={job_log}
+#SBATCH --job-name={JOB_NAME}_{BATCH_ID}
+#SBATCH --output={JOB_LOG}
+#SBATCH --error={JOB_LOG}
 #SBATCH --ntasks=1                                 # CPU specification
 #SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:1                               # Request 1 GPU
 #SBATCH --time=24:00:00
 #SBATCH --partition=high-priority
+#SBATCH --mem=100G
 #SBATCH --exclude=fs-sn-001,fs-sn-002
 
-{python_exe} << EOF
+echo "Allocated GPU: $CUDA_VISIBLE_DEVICES"
+nvidia-smi
+
+{PYTHON_EXE} << EOF
 import pickle
-from mqc_pipeline.settings import PipelineSettings
 from mqc_pipeline.workflow.pipeline import run_one_batch
 
-# Setup pydantic model directly to save time
-settings_dict = {settings_str}
+# Load the validated pydantic model from cache
+with open("{CACHED_CONFIG}", "rb") as f:
+    config = pickle.load(f)
 
 # Load batch data
-with open("{batch_file}", "rb") as f:
+with open("{BATCH_INPUT}", "rb") as f:
     inputs = pickle.load(f)
 
-run_one_batch(inputs, settings)
+run_one_batch(inputs, config)
 
 EOF
 
@@ -63,6 +68,13 @@ def _parse_args():
     parser.add_argument("--write-default-config",
                         type=str,
                         help="Write the default configuration file and exit.")
+
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=
+        "For debug: Batch inputs, write sbatch script and print command without executing it. "
+    )
 
     return parser.parse_args()
 
@@ -91,39 +103,51 @@ def main():
         # This is useful for new user to set up the configuration file.
         PipelineSettings.write_default_config_to_yaml(
             args.write_default_config)
+        print(
+            f"Default configuration file written to {args.write_default_config}"
+        )
         return
 
     if args.config is None:
         raise SystemExit("No configuration file provided.")
 
-    # Load and validate settings from the configuration file
-    logging.info(f"Using configuration file: {args.config}")
     settings = PipelineSettings.from_yaml(args.config)
-    logging.info(f"Settings:\n{pprint.pformat(dict(settings))}")
+
+    # Detailed validation of the input file or directory
+    validate_input(settings.input_file_or_dir)
+
+    logger.info(f"Settings:\n{pprint.pformat(dict(settings))}")
 
     if settings.num_jobs == 0:
         # Run the pipeline locally without SLURM orchestration
-        logging.info(
+        logger.info(
             "Running the pipeline locally without SLURM orchestration.")
         pipeline.run_from_config_settings(settings)
-        logging.info("Pipeline finished successfully.")
+        logger.info("Pipeline finished successfully.")
         return
 
-    # Create output directory for batch files and logs
-    output_dir = Path.cwd() / f"{settings.job_name}_batches"
-    output_dir.mkdir(exist_ok=True)
-    output_dir = output_dir.resolve()
-    logging.info(f"Output directory: {output_dir}")
-
     input_path = Path(settings.input_file_or_dir)
+    _cached_config_path = input_path.parent.resolve() / "_config.pkl"
+    # Caching the validated settings for batch jobs via SLURM
+    with open(_cached_config_path, "wb") as f:
+        pickle.dump(settings, f)
+
+    # Create output directory for batch files and logs
+    output_dir = Path(settings.output_dir).resolve()
+    output_dir.mkdir(exist_ok=True)
+
     submitted_jobs = []
 
     # Process based on input type
     if input_path.is_file():
         # Inputs are SMILES strings
-        logging.info(f"Reading SMILES from {input_path}")
         smiles_list = read_smiles(input_path)
         batch_sizes = _distribute_inputs(len(smiles_list), settings.num_jobs)
+        msg = (
+            f"Read {len(smiles_list)} SMILES from {input_path}\n"
+            f"Requesting {settings.num_jobs} jobs, batch sizes: {batch_sizes}")
+        logger.info(msg)
+        print(msg)
 
         # Create batches
         start_idx = 0
@@ -131,87 +155,115 @@ def main():
             batch_smiles = smiles_list[start_idx:start_idx + batch_size]
             start_idx += batch_size
 
-            # Save batch data using pickle
-            batch_file = output_dir / f"batch_{batch_id}.pkl"
+            # Save batch data to disk
+            batch_dir = output_dir / f"batch_{batch_id}"
+            batch_dir.mkdir(exist_ok=True)
+            batch_file = batch_dir / f"input_smiles.pkl"
             with open(batch_file, 'wb') as fh:
                 pickle.dump(batch_smiles, fh)
 
-            # Submit SLURM job for this batch
-            job_id = _submit_one_slurm_job(settings, batch_id, batch_file,
-                                           output_dir)
+            # batch_file = batch_dir / f"input_smiles.txt"
+            # with open(batch_file, 'w') as fh:
+            #     fh.write("\n".join(batch_smiles))
+
+            # make outputs generated in the batch dir
+            with change_dir(batch_dir):
+                # Submit SLURM job for this batch
+                job_id = _submit_one_slurm_job(
+                    config=settings,
+                    batch_id=batch_id,
+                    batch_file=batch_file,
+                    cached_config=_cached_config_path,
+                    dry_run=args.dry_run)
             if job_id:
                 submitted_jobs.append(job_id)
 
     if input_path.is_dir():
         # Starting from XYZ files
-        logging.info(f"Reading XYZ files from {input_path}")
-        batch_sizes = _distribute_inputs(_count_files(input_path),
-                                         settings.num_jobs)
+        num_xyz_files = _count_files(input_path)
+        batch_sizes = _distribute_inputs(num_xyz_files, settings.num_jobs)
+        msg = (
+            f"Read {num_xyz_files} XYZ files from {input_path}\n"
+            f"Requesting {settings.num_jobs} jobs, batch sizes: {batch_sizes}")
+        logger.info(msg)
+        print(msg)
 
         # Create structure batches from `read_xyz_dir` generator
-        start_idx = 0
+        st_generator = read_xyz_dir(input_path)
         for batch_id, batch_size in enumerate(batch_sizes):
-            start_idx += batch_size
-            batch_sts = [read_xyz_dir(input_path) for _ in range(batch_size)]
+
+            batch_sts = [next(st_generator) for _ in range(batch_size)]
 
             # Save batch data using pickle
-            batch_file = output_dir / f"batch_{batch_id}.pkl"
+            batch_dir = output_dir / f"batch_{batch_id}"
+            batch_dir.mkdir(exist_ok=True)
+            batch_file = batch_dir / f"input_sts.pkl"
             with open(batch_file, 'wb') as fh:
                 pickle.dump(batch_sts, fh)
 
-            # Submit SLURM job for this batch
-            job_id = _submit_one_slurm_job(settings, batch_id, batch_file,
-                                           output_dir)
+            # make outputs generated in the batch dir
+            with change_dir(batch_dir):
+                # Submit SLURM job for this batch
+                job_id = _submit_one_slurm_job(
+                    config=settings,
+                    batch_id=batch_id,
+                    batch_file=batch_file,
+                    cached_config=_cached_config_path,
+                    dry_run=args.dry_run)
             if job_id:
                 submitted_jobs.append(job_id)
 
-    logging.info(f"Submitted {len(submitted_jobs)} jobs")
-    print(
-        f"Submitted {len(submitted_jobs)} jobs with IDs: {', '.join(submitted_jobs)}"
-    )
+    msg = f"Submitted {len(submitted_jobs)} jobs with IDs: {', '.join(submitted_jobs)}"
+    logger.info(msg)
+    print(msg)
 
 
-def _submit_one_slurm_job(config: PipelineSettings, batch_id: int,
-                          batch_file: str | Path, output_dir: str | Path):
+def _submit_one_slurm_job(config: PipelineSettings,
+                          batch_id: int,
+                          batch_file: str | Path,
+                          cached_config: str | Path,
+                          dry_run: bool = False):
     """
     Launch a single sbatch job.
-
-    :param settings: Pipeline settings
-    :param batch_id: Batch identifier number
-    :param batch_file: Path to pickle file containing the batch data
-    :param output_dir: Directory to store the job script and log
-
     """
-    output_dir = Path(output_dir).resolve()
-    script_path = output_dir / f"batch_{batch_id}.sh"
-    job_log = output_dir / f"batch_{batch_id}.log"
+    batch_dir = Path(batch_file).parent.resolve()
+    sbatch_sh_path = batch_dir / f"submit_{batch_id}.sh"
+    job_log = batch_dir / f"{batch_id}.log"
 
     # Get absolute paths for the script and log files
     batch_file = Path(batch_file).resolve()
     config.input_file_or_dir = str(batch_file)
 
     # Create the SLURM command
-    slurm_cmd = SLURM_CMD.format(job_name=config.job_name,
-                                 batch_id=batch_id,
-                                 job_log=job_log,
-                                 python_exe=PYTHON_EXE,
-                                 settings_str=str(config.model_dump()),
-                                 batch_file=str(batch_file))
+    slurm_cmd = SLURM_CMD.format(JOB_NAME=config.job_name,
+                                 BATCH_ID=batch_id,
+                                 JOB_LOG=job_log,
+                                 PYTHON_EXE=PYTHON_EXE,
+                                 CACHED_CONFIG=str(cached_config),
+                                 BATCH_INPUT=str(batch_file))
 
-    script_path.write_text(slurm_cmd)
+    sbatch_sh_path.write_text(slurm_cmd)
+
+    if dry_run:
+        # Print the command instead of executing it
+        print(f"Dry run: wrote {sbatch_sh_path}")
+        return None
 
     # Submit the job using sbatch
     try:
-        result = subprocess.run(["sbatch", str(script_path)],
+        result = subprocess.run(["sbatch", str(sbatch_sh_path)],
                                 check=True,
                                 text=True,
                                 capture_output=True)
         job_id = result.stdout.strip().split()[-1]
-        logging.info(f"Submitted batch {batch_id} as job {job_id}")
+        msg = f"Submitted batch {batch_id} as job {job_id}"
+        logger.info(msg)
+        print(msg)
         return job_id
     except subprocess.CalledProcessError as e:
-        logging.error(f"Failed to submit job: {e}")
-        print(f"Failed to submit job: {e}")
+        msg = f"Failed to submit job: {str(e)}"
+        logger.error(msg)
+        print(msg)
         return None
 
 
