@@ -1,4 +1,6 @@
+import sys
 import time
+import logging
 import subprocess
 from functools import wraps
 from loguru import logger
@@ -6,7 +8,7 @@ from loguru import logger
 # Remove the default loguru handler
 logger.remove()
 
-# Add a new handler that logs to a file with your desired format
+# Add a new handler that logs to a file, the saves generic information
 logger.add(
     "mqc_pipeline.log",
     level="DEBUG",
@@ -14,6 +16,25 @@ logger.add(
     backtrace=False,  # Disable traceback unless needed
     diagnose=False  # Disable deep inspection of tracebacks
 )
+
+
+def setup_logger(name, log_file=None, level=logging.DEBUG, stream=False):
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+
+    formatter = logging.Formatter('%(message)s')
+
+    if log_file:
+        fh = logging.FileHandler(log_file)
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
+
+    if stream:
+        sh = logging.StreamHandler(sys.stdout)
+        sh.setFormatter(formatter)
+        logger.addHandler(sh)
+
+    return logger
 
 
 def has_nvidia_gpu():
