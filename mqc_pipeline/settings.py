@@ -1,7 +1,8 @@
 import yaml
 from pathlib import Path
-from pydantic import BaseModel, Field, field_validator
+from typing import Literal
 from dataclasses import dataclass
+from pydantic import BaseModel, Field, field_validator
 
 ### Module constants ###
 METHOD_AIMNet2 = 'AIMNET2'
@@ -17,6 +18,8 @@ _DEFAULT_FUNCTIONAL = 'b3lypg'
 _DEFAULT_SCF_MAX_CYCLE = 100  # default: 50 in pyscf
 _DEFAULT_SCF_CONV_TOL = 1e-09  # default: 1e-09 in pyscf
 _DEFAULT_GRIDS_LEVEL = 3  # default: 3 in pyscf
+
+SUPPORTED_COLUMNAR_FILE_FORMATS = ('csv', 'parquet')
 
 
 class ValidationError(Exception):
@@ -90,14 +93,13 @@ class PipelineSettings(BaseModel):
     num_jobs: int = Field(
         default=1,
         ge=0,
-        description="Number of SLURM batch jobs to launch. Default is 1. "
+        description="Number of SLURM batch jobs to launch. "
         "If set to 0, the pipeline will run locally without SLURM orchestration."
     )
 
     job_name: str = Field(
         default="mqc_pipeline",
-        description="Name of the SLURM job. Default is 'MQC_NEUTRAL'. "
-        "Only relevant when num_jobs > 0.")
+        description="Name of the SLURM job. Only relevant when num_jobs > 0.")
 
     # Calculation parameters
     geometry_opt_method: str = Field(
@@ -146,6 +148,24 @@ class PipelineSettings(BaseModel):
     esp_probe_depth: float = Field(
         default=1.1,
         description="Probe depth for ESP calculations in angstrom")
+
+    # Output settings
+    output_dir: str = Field(
+        default=Path.cwd().resolve(),
+        description="Directory to save the output files. "
+        "The default is the current working directory that cmdline unitlity is called."
+    )
+
+    output_file_format: Literal["csv", "parquet", "parq"] = Field(
+        default="csv",
+        description=
+        "Output file format to write molecule-level and atom-level properties. "
+        f"Supported formats: {', '.join(SUPPORTED_COLUMNAR_FILE_FORMATS)}. Default is csv."
+    )
+
+    progress_log_interval: int = Field(
+        default=10,
+        description="Interval for logging progress during batch processing.")
 
     def to_ase_options(self) -> ASEOption:
         """
