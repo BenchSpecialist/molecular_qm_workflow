@@ -1,9 +1,11 @@
+import os
 import sys
 import time
 import logging
 import subprocess
-from functools import wraps
 from loguru import logger
+from functools import wraps
+from contextlib import contextmanager
 
 # Remove the default loguru handler
 logger.remove()
@@ -69,3 +71,18 @@ def timer(func):
         return result
 
     return wrapper
+
+
+@contextmanager
+def change_dir(new_dir: str):
+    """
+    Context manager to change the working directory.
+    """
+    new_dir = os.path.abspath(new_dir)
+    old_dir = os.getcwd()
+    os.makedirs(new_dir, exist_ok=True)
+    try:
+        os.chdir(new_dir)
+        yield
+    finally:
+        os.chdir(old_dir)
