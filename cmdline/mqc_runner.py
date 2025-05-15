@@ -22,18 +22,18 @@ SLURM_CMD = """#!/bin/bash
 #SBATCH --job-name={JOB_NAME}_{BATCH_ID}
 #SBATCH --output={JOB_LOG}
 #SBATCH --error={JOB_LOG}
-#SBATCH --ntasks=1                                 # CPU specification
-#SBATCH --cpus-per-task=1
-#SBATCH --gres=gpu:1                               # Request 1 GPU
+#SBATCH --ntasks=1           # CPU spec: Request 1 MPI task/independent process
+#SBATCH --cpus-per-task=1    # Allocate 1 CPU core for that task
+#SBATCH --gres=gpu:1         # Allocate 1 GPU
 #SBATCH --time=24:00:00
 #SBATCH --partition=high-priority
-#SBATCH --mem=100G
+#SBATCH --mem=100G           # 1500 GB limit per compute node, CPUs could be oversubscribed based on request mem
 #SBATCH --exclude=fs-sn-001,fs-sn-002
 
 echo "Allocated GPU: $CUDA_VISIBLE_DEVICES"
 nvidia-smi
 
-{PYTHON_EXE} << EOF
+srun {PYTHON_EXE} << EOF
 import pickle
 from mqc_pipeline.workflow.pipeline import run_one_batch
 
