@@ -6,6 +6,7 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Chem import rdDetermineBonds
 from rdkit.Chem.rdMolTransforms import GetBondLength
+from openbabel import pybel
 
 from .common import Structure, get_unpaired_electrons
 from .adaptors import get_adaptor
@@ -96,7 +97,7 @@ def smiles_to_3d_structures_by_rdkit(smiles: str,
                      metadata=metadata)
 
 
-def get_canonical_smiles(input) -> str:
+def get_canonical_smiles_rdk(input) -> str:
     """
     Convert a 3D structure to a canonical SMILES string using RDKit.
     Supported input types (contains coordinates) included:
@@ -120,3 +121,31 @@ def get_canonical_smiles(input) -> str:
         rdkit_mol = adaptor.to_rdkit_mol(remove_hydrogens=True)
 
     return Chem.CanonSmiles(Chem.MolToSmiles(rdkit_mol))
+
+
+def get_canonical_smiles_ob(xyz_file_or_block) -> str:
+    """
+    Convert a 3D structure to a canonical SMILES string using Open Babel.
+    """
+    if xyz_file_or_block.endswith(".xyz"):
+        obmol = next(pybel.readfile("xyz", xyz_file_or_block))
+    else:
+        # Convert XYZ block to Open Babel molecule
+        obmol = pybel.readstring("xyz", xyz_file_or_block)
+
+    obmol.addh()  # add hydrogens
+    obmol.make3D()  # refine 3D geometry
+    return obmol.write("can").strip().split('\t')[0]
+
+
+def smiles_has_broken_bonds(smiles) -> bool:
+    """
+    Check if a SMILES string has broken bonds (i.e., disconnected fragments).
+    """
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        raise ValueError("Invalid SMILES string")
+
+    # Get connected components (fragments)
+    fragments = Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False)
+    return len(fragments) > 1
