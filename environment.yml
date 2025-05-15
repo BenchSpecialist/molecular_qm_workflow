@@ -1,3 +1,5 @@
+# Usage:
+# micromamba create --prefix /mnt/filesystem/dev_renkeh/mqc-env --file environment.yml
 name: mqc-env
 channels:
   - conda-forge
@@ -13,24 +15,32 @@ dependencies:
   - pyyaml
   - h5py
   - packaging
+  - pytorch=2.6.0
+  - pytorch-cuda=12.4
+  - pytorch-cluster
   - pip
   # aimnet2calc dependencies
-  - openbabel
   - ase
+  - openbabel
+  - matplotlib
+  - scikit-learn
+  - sympy
   - autograd
   - dask
   - distributed
   - fabric
   - jinja2
   - joblib
-  - matplotlib
   - natsort
   - psutil
   - rmsd
-  - sympy
-  - scikit-learn
   - pip:
+    - --index-url https://download.pytorch.org/whl/cu124
     - rdkit
     - pysisyphus
     - gpu4pyscf-cuda12x
     - cutensor-cu12
+    - torch==2.6.0
+    - loguru
+    - tqdm
+    - snowflake-snowpark-python
