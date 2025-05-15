@@ -1,0 +1,12 @@
+# .flake8
+[flake8]
+; F401: Module imported but unused
+; F821: Undefined name
+; F822: Undefined name in all
+; F823: Local variable name referenced before assignment
+; F841: Local variable name is assigned to but never used
+select = F401, F821, F822, F823, F841
+
+per-file-ignores =
+    # Ignore unused imports in __init__.py files
+    */__init__.py: F401

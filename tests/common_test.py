@@ -1,5 +1,4 @@
 import numpy as np
-from rdkit import Chem
 
 from mqc_pipeline import Structure
 

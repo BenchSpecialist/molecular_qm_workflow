@@ -7,7 +7,7 @@ all: install
 
 # Clean build and other artifacts
 clean:
-	rm -rf build/ dist/ *.egg-info/ .pytest_cache/
+	rm -rf build/ dist/ *.egg-info/ .pytest_cache/ *.log
 	find . -name __pycache__ -type d -exec rm -rf {} +
 	find . -name .ruff_cache -type d -exec rm -rf {} +
 	find . -name "*.pyc" -delete

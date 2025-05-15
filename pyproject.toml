@@ -42,6 +42,7 @@ cpu_test = [
     'pyscf > 2.5.0',
     'geometric', # for geometry optimization
     "loguru", # for logging
+    "openbabel",
 ]
 dev = [
     "pytest>=7.0.0",

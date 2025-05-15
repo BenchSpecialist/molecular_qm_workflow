@@ -14,8 +14,7 @@ from typing import Union, BinaryIO, TextIO, Iterable
 
 from .common import Structure
 from .property import (DFT_ENERGY_KEY, HOMO_KEY, LUMO_KEY, ESP_MIN_KEY,
-                       ESP_MAX_KEY, DIPOLE_X_KEY, DIPOLE_Y_KEY, DIPOLE_Z_KEY,
-                       DFT_FORCES_KEY, CHELPG_CHARGE_KEY)
+                       ESP_MAX_KEY, DIPOLE_X_KEY, DIPOLE_Y_KEY, DIPOLE_Z_KEY)
 
 # Type aliases
 StructureType = Union[Structure, Iterable[Structure]]

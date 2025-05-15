@@ -2,10 +2,9 @@ from pathlib import Path
 import pytest
 
 from rdkit import Chem
-from rdkit.Chem import rdDetermineBonds
 from pyscf import M
 
-from mqc_pipeline import smiles_to_3d_structures_by_rdkit, Structure
+from mqc_pipeline import smiles_to_3d_structures_by_rdkit
 from mqc_pipeline.smiles_util import get_canonical_smiles
 from mqc_pipeline.adaptors import get_adaptor
 

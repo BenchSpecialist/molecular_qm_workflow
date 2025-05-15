@@ -13,7 +13,6 @@ from uuid import uuid4
 from typing import Optional
 from dataclasses import dataclass
 
-from rdkit import Chem
 from ase import Atoms
 import pyscf
 
@@ -125,12 +124,12 @@ class Structure:
                 and multiplicity_equal)
 
 
-def get_unpaired_electrons(mol: Chem.Mol) -> int:
+def get_unpaired_electrons(rdk_mol) -> int:
     """
     Compute the number of unpaired electrons in a RDKit molecule.
 
-    :param mol: The input RDKit molecule.
+    :param mol: `rdkit.Chem.rdchem.Mol` object representing the molecule.
 
     :return: The number of unpaired electrons in the molecule.
     """
-    return sum(atom.GetNumRadicalElectrons() for atom in mol.GetAtoms())
+    return sum(atom.GetNumRadicalElectrons() for atom in rdk_mol.GetAtoms())
