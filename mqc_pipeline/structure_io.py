@@ -77,24 +77,26 @@ def read(file_or_path: FileLikeType, format: str = 'json') -> StructureType:
         return read_xyz(file_or_path)
 
 
+class NumpyEncoder(json.JSONEncoder):
+
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
+
 def write_json(structures: StructureType, file_or_path: FileLikeType):
     if isinstance(structures, Structure):
         # Single structure
         data = asdict(structures)
-        data['xyz'] = structures.xyz.tolist()
     else:
-        # Collection of structures
-        data = []
-        for structure in structures:
-            struct_data = asdict(structure)
-            struct_data['xyz'] = structure.xyz.tolist()
-            data.append(struct_data)
+        data = [asdict(st) for st in structures]
 
     if isinstance(file_or_path, (str, Path)):
         with open(file_or_path, 'w') as f:
-            json.dump(data, f, indent=2)
+            json.dump(data, f, indent=2, cls=NumpyEncoder)
     else:
-        json.dump(data, file_or_path, indent=2)
+        json.dump(data, file_or_path, indent=2, cls=NumpyEncoder)
 
 
 def read_json(file_or_path: FileLikeType) -> StructureType:
@@ -106,14 +108,10 @@ def read_json(file_or_path: FileLikeType) -> StructureType:
 
     if isinstance(data, list):
         # Collection of structures
-        structures = []
-        for struct_data in data:
-            struct_data['xyz'] = np.array(struct_data['xyz'])
-            structures.append(Structure(**struct_data))
-        return structures
+        sts = [Structure(**st_data) for st_data in data]
+        return sts
     else:
         # Single structure
-        data['xyz'] = np.array(data['xyz'])
         return Structure(**data)
 
 
