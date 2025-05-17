@@ -1,9 +1,21 @@
 #!/mnt/filesystem/dev_renkeh/mqc-env/bin/python
 """
+Commandline API to run the molecular geometry optimization and property calculation pipeline.
+
 Import the parent directory to the system path to run this script from anywhere.
 ```
 export PATH="/path/to/mqc_pipeline/cmdline:$PATH"
 ```
+
+Usage:
+- Generate a default configuration file:
+    $ mqc_runner.py --write-default-config <config.yaml>
+
+- Run the pipeline with a configuration file:
+    $ mqc_runner.py --config <config.yaml>
+
+- Batch inputs and write out SLURM scripts, but NOT submit for debugging:
+    $ mqc_runner.py --config <config.yaml> --dry-run
 """
 import pprint
 import pickle
@@ -16,6 +28,8 @@ from mqc_pipeline.workflow.io import read_smiles, read_xyz_dir
 from mqc_pipeline.settings import PipelineSettings
 from mqc_pipeline.validate import validate_input
 from mqc_pipeline.util import logger, change_dir
+
+_PYTHON_EXE = "/mnt/filesystem/dev_renkeh/mqc-env/bin/python"
 
 SLURM_CMD = """#!/bin/bash
 
@@ -49,7 +63,6 @@ run_one_batch(inputs, config)
 EOF
 
 """
-PYTHON_EXE = "/mnt/filesystem/dev_renkeh/mqc-env/bin/python"
 
 
 def _parse_args():
@@ -133,7 +146,7 @@ def main():
 
     # Create output directory for batch files and logs
     output_dir = Path(settings.output_dir).resolve()
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     submitted_jobs = []
 
@@ -156,14 +169,14 @@ def main():
 
             # Save batch data to disk
             batch_dir = output_dir / f"batch_{batch_id}"
-            batch_dir.mkdir(exist_ok=True)
+            batch_dir.mkdir(parents=True, exist_ok=True)
             batch_file = batch_dir / f"input_smiles.pkl"
             with open(batch_file, 'wb') as fh:
                 pickle.dump(batch_smiles, fh)
 
-            # batch_file = batch_dir / f"input_smiles.txt"
-            # with open(batch_file, 'w') as fh:
-            #     fh.write("\n".join(batch_smiles))
+            # Write batch info to human-readable format for debugging
+            with open(batch_dir / f"_input_smiles.txt", 'w') as fh:
+                fh.write("\n".join(batch_smiles))
 
             # make outputs generated in the batch dir
             with change_dir(batch_dir):
@@ -195,10 +208,15 @@ def main():
 
             # Save batch data using pickle
             batch_dir = output_dir / f"batch_{batch_id}"
-            batch_dir.mkdir(exist_ok=True)
+            batch_dir.mkdir(parents=True, exist_ok=True)
             batch_file = batch_dir / f"input_sts.pkl"
             with open(batch_file, 'wb') as fh:
                 pickle.dump(batch_sts, fh)
+
+            # Write batch info to human-readable format
+            with open(batch_dir / f"_input_xyz.txt", 'w') as fh:
+                fh.write("\n".join(
+                    [st.metadata.get('from_xyz_file') for st in batch_sts]))
 
             # make outputs generated in the batch dir
             with change_dir(batch_dir):
@@ -225,19 +243,23 @@ def _submit_one_slurm_job(config: PipelineSettings,
     """
     Launch a single sbatch job.
     """
-    batch_dir = Path(batch_file).parent.resolve()
-    sbatch_sh_path = batch_dir / f"submit_{batch_id}.sh"
-    job_log = batch_dir / f"{batch_id}.log"
+    output_dir = Path(config.output_dir).resolve()
+    _slurm_sh_dir = output_dir / "slurm_scripts"
+    _slurm_sh_dir.mkdir(parents=True, exist_ok=True)
+    sbatch_sh_path = _slurm_sh_dir / f"submit_{batch_id}.sh"
 
-    # Get absolute paths for the script and log files
+    _slum_log_dir = output_dir / "slurm_logs"
+    _slum_log_dir.mkdir(parents=True, exist_ok=True)
+    job_log = _slum_log_dir / f"{batch_id}.log"
+
+    # Get absolute paths for the batch input file (in pkl format)
     batch_file = Path(batch_file).resolve()
-    config.input_file_or_dir = str(batch_file)
 
     # Create the SLURM command
     slurm_cmd = SLURM_CMD.format(JOB_NAME=config.job_name,
                                  BATCH_ID=batch_id,
                                  JOB_LOG=job_log,
-                                 PYTHON_EXE=PYTHON_EXE,
+                                 PYTHON_EXE=_PYTHON_EXE,
                                  CACHED_CONFIG=str(cached_config),
                                  BATCH_INPUT=str(batch_file))
 

@@ -16,8 +16,8 @@ from .io import read_smiles, read_xyz_dir
 
 _GPU_ID = os.environ.get("CUDA_VISIBLE_DEVICES") or 0
 
-MOL_PROP_OUTFILE = "molecule_property_{GPU_ID}_{mol_id_of_first_mol}.{ext}"
-ATOM_PROP_OUTFILE = "atom_property_{GPU_ID}_{mol_id_of_first_mol}.{ext}"
+MOL_PROP_OUTFILE = "molecule_property.{ext}"
+ATOM_PROP_OUTFILE = "atom_property.{ext}"
 
 FAILED_INPUTS = Path("FAILED_INPUTS.txt")
 
@@ -76,8 +76,7 @@ def run_one_batch(inputs: list[str] | list[Structure],
     Run pipeline for a batch of molecules; they are intended to run in serial
     on a single GPU.
     """
-    progress_logger = setup_logger("progress_logger",
-                                   log_file=f"PROGRESS_{_GPU_ID}.log")
+    progress_logger = setup_logger("progress_logger", log_file=f"PROGRESS.log")
     pyscf_options = settings.to_pyscf_options()
     esp_options = settings.to_esp_grids_options()
 
@@ -111,18 +110,15 @@ def run_one_batch(inputs: list[str] | list[Structure],
             ) % settings.progress_log_interval == 0 or i + 1 == total_count:
             progress_logger.info(f"{i + 1}/{total_count} DONE")
 
-    mol_id_of_first_mol = out_sts[0].unique_id
     ext = settings.output_file_format.lower()
 
     # Write molecule-level properties to a file
-    mol_prop_out = MOL_PROP_OUTFILE.format(
-        GPU_ID=_GPU_ID, mol_id_of_first_mol=mol_id_of_first_mol, ext=ext)
+    mol_prop_out = MOL_PROP_OUTFILE.format(ext=ext)
     write_molecule_property(out_sts, mol_prop_out)
     logger.info(f"Molecule-level properties written to {mol_prop_out}")
 
     # Write atom-level properties to a separate file
-    atom_prop_out = ATOM_PROP_OUTFILE.format(
-        GPU_ID=_GPU_ID, mol_id_of_first_mol=mol_id_of_first_mol, ext=ext)
+    atom_prop_out = ATOM_PROP_OUTFILE.format(ext=ext)
     write_atom_property(out_sts, atom_prop_out)
     logger.info(f"Atom-level properties written to {atom_prop_out}")
 
