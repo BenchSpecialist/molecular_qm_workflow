@@ -1,5 +1,7 @@
 import time
+import json
 import numpy as np
+from pathlib import Path
 
 from ..util import logger
 
@@ -21,6 +23,14 @@ from .keys import (DFT_ENERGY_KEY, HOMO_KEY, LUMO_KEY, ESP_MIN_KEY,
                    DFT_FORCES_KEY, CHELPG_CHARGE_KEY)
 
 
+class NumpyEncoder(json.JSONEncoder):
+
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
+
 def _is_scf_done(mf_obj) -> bool:
     """
     Check if the SCF calculation is done.
@@ -28,6 +38,23 @@ def _is_scf_done(mf_obj) -> bool:
     :param mf_obj: PySCF mean-field object.
     """
     return mf_obj.e_tot != 0
+
+
+def get_freq_info(mf_obj):
+    """
+    Compute Hessian and return frequency information
+    """
+    from pyscf.hessian import thermo
+    if not _is_scf_done(mf_obj):
+        raise RuntimeError(
+            "Freq: No SCF calculation performed. Please run SCF first.")
+
+    hessian = mf_obj.Hessian().kernel()
+    freq_info = thermo.harmonic_analysis(mf_obj.mol,
+                                         hessian,
+                                         imaginary_freq=False)
+
+    return freq_info
 
 
 def get_quadrupole_moment(
@@ -59,7 +86,9 @@ def get_default_properties(st: Structure, mf, rdm1) -> Structure:
     """
     Get default properties for the given structure. This function wraps calculations
     of shared properties among neutral solvent and ions, including:
-    Total electronic energy (Hartree), HOMO (eV), LUMO (eV), dipole (Debye).
+    - Total electronic energy (Hartree)
+    - HOMO (eV), LUMO (eV)
+    - Dipole (Debye)
 
     :param st: Structure object containing the molecule information.
     :param mf: PySCF mean-field object.
@@ -90,17 +119,22 @@ def get_default_properties(st: Structure, mf, rdm1) -> Structure:
 def get_properties_neutral(st: Structure,
                            pyscf_options: PySCFOption,
                            esp_options: ESPGridsOption,
+                           return_chelpg_chg: bool = True,
                            return_gradient: bool = False,
-                           return_chelpg_chg: bool = True) -> Structure:
+                           return_freq: bool = False,
+                           return_quadrupole: bool = False) -> Structure:
     """
     Compute properties for the given structure (neutral molecule) using PySCF.
 
     :param st: Structure object containing the molecule information.
     :param pyscf_options: PySCFOption object with relevant parameters to set up PySCF.
+    :param return_chelpg_chg: Whether to calculate CHELPG partial charges.
     :param return_gradient: Whether to run gradient calculations. This needs to be
                             true if the input structure is not optimized by PySCF,
                             as the DFT gradients are not available from the geometry
                             optimization.
+    :param return_freq: Whether to run frequency calculations.
+    :param return_quadrupole: Whether to calculate the quadrupole moment.
 
     :return: Structure object with populated `property` attribute.
     """
@@ -129,10 +163,6 @@ def get_properties_neutral(st: Structure,
     # Get default properties: e_tot, HOMO, LUMO, dipole
     st = get_default_properties(st, mf, rdm1)
 
-    if return_gradient:
-        gradients_arr = mf.Gradients().kernel()
-        st.save_gradients(gradients_arr, prop_key=DFT_FORCES_KEY)
-
     # ESP and CHELPG charges calculations can only run on GPUs
     if _USE_GPU:
         # Generate grids for ESP calculations
@@ -153,6 +183,24 @@ def get_properties_neutral(st: Structure,
         logger.warning(
             "CHELPG charges and ESP calculations are not available without GPU."
         )
+
+    if return_gradient:
+        gradients_arr = mf.Gradients().kernel()
+        st.save_gradients(gradients_arr, prop_key=DFT_FORCES_KEY)
+
+    if return_quadrupole:
+        st.property['quadrupole_debyeAngstrom'] = get_quadrupole_moment(
+            mf, rdm1)
+
+    if return_freq:
+        t_hessian_start = time.perf_counter()
+        freq_info = get_freq_info(mf)
+        st.metadata['dft_freq_calc_duration'] = time.perf_counter(
+        ) - t_hessian_start
+        freq_info_file = Path(f"freq_info_{st.unique_id}.json").resolve()
+        with open(freq_info_file, 'w') as f:
+            json.dump(freq_info, f, indent=2, cls=NumpyEncoder)
+        logger.info(f"Frequency information saved to {freq_info_file}.")
 
     # PySCF is not expected to change the order of atoms, but we update it just in case
     st.elements = [mol.atom_symbol(i) for i in range(mol.natm)]
