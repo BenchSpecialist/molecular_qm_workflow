@@ -87,10 +87,18 @@ def run_one_batch(inputs: list[str] | list[Structure],
     if settings.geometry_opt_method.upper() == METHOD_DFT:
         opt_func = partial(optimize.optimize_by_pyscf, options=pyscf_options)
 
-    # Set up property calculator
-    prop_func = partial(get_properties_neutral,
-                        pyscf_options=pyscf_options,
-                        esp_options=esp_options)
+    # Set up property calculator, get all properties
+    prop_func = partial(
+        get_properties_neutral,
+        pyscf_options=pyscf_options,
+        esp_options=esp_options,
+        # DFT-optimized structures already save the gradient info.
+        return_gradient=(
+            settings.geometry_opt_method.upper() == METHOD_AIMNet2),
+        return_chelpg_chg="chelpg_charges" in settings.additional_properties,
+        return_freq="freq" in settings.additional_properties,
+        return_quadrupole="quadrupole" in settings.additional_properties,
+    )
 
     # Run the pipeline for each molecule sequentially
     out_sts = []

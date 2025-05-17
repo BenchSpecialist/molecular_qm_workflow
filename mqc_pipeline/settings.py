@@ -21,6 +21,8 @@ _DEFAULT_GRIDS_LEVEL = 3  # default: 3 in pyscf
 
 SUPPORTED_COLUMNAR_FILE_FORMATS = ('csv', 'parquet')
 
+SUPPORTED_ADDITIONAL_PROPS = ("chelpg_charges", "freq", "quadrupole")
+
 
 class ValidationError(Exception):
     pass
@@ -149,6 +151,14 @@ class PipelineSettings(BaseModel):
         default=1.1,
         description="Probe depth for ESP calculations in angstrom")
 
+    # Property calculation settings
+    additional_properties: list[str] = Field(
+        default=["chelpg_charges"],
+        description="Additional DFT properties to compute. "
+        f"Supported properties: {', '.join(SUPPORTED_ADDITIONAL_PROPS)}. "
+        f"Note that total electronic energy, HOMO/LUMO, dipole moment, ESP range are always returned."
+    )
+
     # Output settings
     output_dir: str = Field(
         default=Path.cwd().resolve(),
@@ -275,12 +285,25 @@ class PipelineSettings(BaseModel):
     def validate_ase_optimizer(cls, optimizer: str) -> str:
         """
         Validates that the ASE optimizer name is one of the supported values.
-
-        :param v: The optimizer name to validate.
-        :return: The validated optimizer name.
         """
         if optimizer not in SUPPORTED_ASE_OPTIMIZERS:
             raise ValidationError(
                 f"Unsupported ASE optimizer: {optimizer}. Supported optimizers are: {', '.join(SUPPORTED_ASE_OPTIMIZERS)}"
             )
         return optimizer
+
+    @field_validator('additional_properties')
+    def validate_additional_properties(cls,
+                                       properties: list[str]) -> list[str]:
+        """
+        Validates that all specified additional properties are supported.
+        """
+        if unsupported := [
+                prop for prop in properties
+                if prop.lower() not in SUPPORTED_ADDITIONAL_PROPS
+        ]:
+            raise ValidationError(
+                f"Unsupported additional properties: {', '.join(unsupported)}. "
+                f"Supported properties are: {', '.join(SUPPORTED_ADDITIONAL_PROPS)}"
+            )
+        return properties
