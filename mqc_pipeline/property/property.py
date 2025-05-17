@@ -7,11 +7,9 @@ try:
     from gpu4pyscf.dft import rks, uks
     from gpu4pyscf.qmmm import chelpg
     _USE_GPU = True
-    logger.info("Using GPU-accelerated PySCF.")
 except (ImportError, AttributeError):
     from pyscf.dft import rks, uks
     _USE_GPU = False
-    logger.info("GPU4PySCF not available, falling back to normal CPU PySCF.")
 
 from ..common import Structure
 from ..constants import HARTREE_TO_EV
@@ -40,7 +38,7 @@ def get_quadrupole_moment(
     :param mol: PySCF Mole object.
     :param rdm1: One-body reduced density matrix.
 
-    :return: Quadrupole moment components (Qxx, Qyy, Qzz, Qxy).
+    :return: Quadrupole moment expressed in 6 components (Qxx, Qyy, Qzz, Qxy, Qxz, Qyz).
     """
     if not _is_scf_done(mf_obj):
         raise RuntimeError(

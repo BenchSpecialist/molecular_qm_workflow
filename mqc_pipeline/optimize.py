@@ -12,7 +12,6 @@ try:
     from gpu4pyscf.dft import rks, uks
     logger.info("Using GPU-accelerated PySCF.")
 except (ImportError, AttributeError):
-    logger.info("GPU4PySCF not available, falling back to normal CPU PySCF.")
     from pyscf.dft import rks, uks
 
 from .common import Structure, COORDINATE_UNIT
