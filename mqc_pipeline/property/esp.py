@@ -1,8 +1,22 @@
 import importlib
 import numpy as np
-import pyscf
+
+from ..util import logger
+
+# Dynamic imports of GPU modules
+# This is done to avoid import errors when running on CPU-only systems
+try:
+    cupy = importlib.import_module('cupy')
+    int1e_grids = importlib.import_module('gpu4pyscf.gto.int3c1e').int1e_grids
+    _USE_GPU = True
+except (ImportError, AttributeError) as e:
+    _USE_GPU = False
 
 from ..constants import ANGSTROM_TO_BOHR, HARTREE_TO_EV
+
+# If the absolute value of the ESP for closed-shell systems is greater than this
+# threshold, the ESP calculation is considered to be unreliable.
+_ESP_ABS_THRESHOLD_EV_SPIN0 = 27
 
 
 def _get_esp_radii(solvent_probe: float) -> np.ndarray:
@@ -41,14 +55,14 @@ def _get_esp_radii(solvent_probe: float) -> np.ndarray:
     return esp_radii
 
 
-def generate_esp_grids(mol: 'pyscf.gto.mole.Mole',
+def generate_esp_grids(mol,
                        rcut: float = 3.0,
                        space: float = 0.5,
-                       solvent_probe: float = 0.7) -> np.ndarray:
+                       solvent_probe: float = 1.1) -> np.ndarray:
     """
     Generate grid points for electrostatic potential (ESP) calculation
 
-    :param mol: PySCF Mole object providing coordinates and atomic numbers information.
+    :param mol: 'pyscf.gto.mole.Mole' object providing coordinates and atomic numbers information.
     :param rcut: cut-off distance (in angstrom) for the solvent accessible region around the molecule
     :param space: grid spacing (in angstrom) for the regularly spaced grid points
     :param solvent_probe: radius (in angstrom) determining the envelope around the molecule
@@ -111,18 +125,15 @@ def generate_esp_grids(mol: 'pyscf.gto.mole.Mole',
     return grids
 
 
-def get_esp_range(mol: 'pyscf.gto.mole.Mole', grids: np.ndarray,
-                  one_rdm: np.ndarray) -> tuple[float, float]:
+def _get_esp_range_old(mol, grids: np.ndarray,
+                       one_rdm: np.ndarray) -> tuple[float, float]:
     """
-    Calculate electrostatic potential (ESP) for a molecule with the given grid points.
-
-    :param mol: PySCF Mole object containing the molecule information.
-    :param grids: numpy array representing grid points where ESP to be calculated.
-                  shape (ngrid, 3)
-    :param one_rdm: numpy array representing the one-body reduced density matrix.
-
-    :return: a tuple containing the minimum and maximum ESP values in eV.
+    Old version of the ESP calculation using GPU4PySCF.
+    It only works correct up to `gpu4pyscf 1.3.2`; for the latest
+    version `gpu4pyscf 1.4.0`, this function output values that are well
+    outside the range of (-1, 1).
     """
+    import pyscf
     # Dynamic imports using importlib with error handling
     try:
         cupy = importlib.import_module('cupy')
@@ -143,7 +154,6 @@ def get_esp_range(mol: 'pyscf.gto.mole.Mole', grids: np.ndarray,
 
     # Calculate z_val
     z_val = cupy.einsum('ig, i->g', 1.0 / dr, qm_charges)
-    g_val = []
 
     # Calculate g_val using GPU4PySCF integrals
     auxmol = pyscf.gto.fakemol_for_charges(
@@ -162,14 +172,63 @@ def get_esp_range(mol: 'pyscf.gto.mole.Mole', grids: np.ndarray,
     return esp_min, esp_max
 
 
-def _get_esp_range(mol: 'pyscf.gto.mole.Mole', grids: np.ndarray,
-                   one_rdm: np.ndarray) -> tuple[float, float]:
+def get_esp_range(mol, grids: np.ndarray,
+                  one_rdm: np.ndarray) -> tuple[float, float]:
     """
-    This function uses the handy `int1e_grids` function available in the latest
-    GPU4PySCF version to compute the electrostatic potential with given grid points.
-    """
-    # Dynamic import of the int1e_grids function
-    int1e_grids = importlib.import_module('gpu4pyscf.gto.int3c1e').int1e_grids
+    Calculate electrostatic potential (ESP) for a molecule with the given grid points.
 
-    esp_vals = int1e_grids(mol, grids, dm=one_rdm)
-    return min(esp_vals) * HARTREE_TO_EV, max(esp_vals) * HARTREE_TO_EV
+    :param mol: 'pyscf.gto.mole.Mole' object containing atomic coordinates, nuclear charges,
+                and basis set info
+    :param grids: Array of 3D coordinates where ESP will be evaluated (shape: [Ngrid, 3])
+    :param one_rdm: One-electron reduced density matrix representing electron distribution
+                    (shape: [Nbasis, Nbasis])
+
+    :return: Minimum and maximum ESP values across all grid points in eV unit.
+    """
+    if not _USE_GPU:
+        raise RuntimeError(
+            "Required GPU modules not available. Please ensure cupy and gpu4pyscf are installed correctly."
+        )
+    # Calculate electronic contribution to ESP at grid points
+    # This integral represents the Coulomb potential from the electron density
+    # v_grids_e = ∫ ρ(r')/|r-r'| dr', where ρ is the electron density
+    v_grids_e = int1e_grids(mol, grids, dm=one_rdm)
+
+    # Move calculations to GPU for better performance
+    qm_xyz = cupy.array(mol.atom_coords())
+    qm_charges = cupy.array(mol.atom_charges())
+    grids_cu = cupy.array(grids)
+
+    # Calculate distances between each nucleus and each grid point
+    drg = qm_xyz[:, None, :] - grids_cu  # (Natom, Ngrid, 3)
+    dr = cupy.linalg.norm(drg, axis=2)  # (Natom, Ngrid)
+
+    # Calculate nuclear contribution to ESP
+    # The ESP from nuclei is given by: Σ(Z_A/|r-R_A|) for all atoms A
+    # where Z_A is the nuclear charge and R_A is the nuclear position
+    z_val = cupy.einsum('ig, i->g', 1.0 / dr, qm_charges)
+
+    # Combine nuclear and electronic contributions to get total ESP
+    # and convert back to CPU memory (numpy array)
+    # Electronic contribution has opposite sign (negative charges)
+    # Total ESP = nuclear contribution - electronic contribution
+    esp_vals = cupy.asnumpy(z_val - v_grids_e)
+
+    # For open shell species, esp_vals has shape (2, Ngrid) where esp_vals[0] is
+    # alpha ESP and esp_vals[1] is beta ESP.
+    # Total ESP at any point is the contribution from all electrons, regardless of spin.
+    if esp_vals.ndim == 2:
+        # Sum the alpha and beta contributions at each grid point
+        total_esp = esp_vals[0] + esp_vals[1]
+        return min(total_esp) * HARTREE_TO_EV, max(total_esp) * HARTREE_TO_EV
+    else:
+        # For closed shell species, return the min and max directly
+        esp_min = min(esp_vals) * HARTREE_TO_EV
+        esp_max = max(esp_vals) * HARTREE_TO_EV
+        if abs(esp_min) > _ESP_ABS_THRESHOLD_EV_SPIN0 or abs(
+                esp_max) > _ESP_ABS_THRESHOLD_EV_SPIN0:
+            raise ValueError(
+                f"ESP range (min: {esp_min:.2f} eV, max: {esp_max:.2f} eV) for "
+                "closed shell species are outside the expected range (-27 to 27 eV). "
+            )
+        return esp_min, esp_max
