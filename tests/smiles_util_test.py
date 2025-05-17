@@ -1,3 +1,4 @@
+import platform
 from pathlib import Path
 import pytest
 
@@ -103,6 +104,11 @@ O         -3.35323        2.59408        0.02215
 can_smiles2 = "[CH2]OC(=O)O[CH]F"
 
 
+@pytest.mark.skipif(
+    platform.system() != "Darwin",
+    reason=
+    "openbabel cannot installed correctly with pyproject.toml, so only run this test locally"
+)
 @pytest.mark.parametrize("xyz_block, expected_smiles", [(xyz1, can_smiles1),
                                                         (xyz2, can_smiles2)],
                          ids=['xyz1', 'xyz2'])

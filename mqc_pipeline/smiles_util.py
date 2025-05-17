@@ -6,7 +6,6 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Chem import rdDetermineBonds
 from rdkit.Chem.rdMolTransforms import GetBondLength
-from openbabel import pybel
 
 from .common import Structure, get_unpaired_electrons
 from .adaptors import get_adaptor
@@ -127,6 +126,13 @@ def get_canonical_smiles_ob(xyz_file_or_block) -> str:
     """
     Convert a 3D structure to a canonical SMILES string using Open Babel.
     """
+    try:
+        from openbabel import pybel
+    except ImportError:
+        logger.error(
+            "Function get_canonical_smiles_ob needs openbabel package, which is not installed."
+        )
+        return
     if xyz_file_or_block.endswith(".xyz"):
         obmol = next(pybel.readfile("xyz", xyz_file_or_block))
     else:
