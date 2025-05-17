@@ -90,7 +90,8 @@ def get_default_properties(st: Structure, mf, rdm1) -> Structure:
 def get_properties_neutral(st: Structure,
                            pyscf_options: PySCFOption,
                            esp_options: ESPGridsOption,
-                           return_gradient: bool = False) -> Structure:
+                           return_gradient: bool = False,
+                           return_chelpg_chg: bool = True) -> Structure:
     """
     Compute properties for the given structure (neutral molecule) using PySCF.
 
@@ -142,11 +143,12 @@ def get_properties_neutral(st: Structure,
         st.property[ESP_MIN_KEY], st.property[ESP_MAX_KEY] = get_esp_range(
             mol, grids, one_rdm=rdm1)
 
-        # Evaluate CHELPG charges and transfers data from GPU (cupy) to CPU (numpy)
-        # CHELPG method fits atomic charges to reproduce ESP at a number of points
-        # around the molecule.
-        chelpg_charges = chelpg.eval_chelpg_layer_gpu(mf).get()
-        st.atom_property[CHELPG_CHARGE_KEY] = chelpg_charges
+        if return_chelpg_chg:
+            # Evaluate CHELPG charges and transfers data from GPU (cupy) to CPU (numpy)
+            # CHELPG method fits atomic charges to reproduce ESP at a number of points
+            # around the molecule.
+            chelpg_charges = chelpg.eval_chelpg_layer_gpu(mf).get()
+            st.atom_property[CHELPG_CHARGE_KEY] = chelpg_charges
     else:
         logger.warning(
             "CHELPG charges and ESP calculations are not available without GPU."
