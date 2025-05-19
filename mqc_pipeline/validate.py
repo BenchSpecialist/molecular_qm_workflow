@@ -1,6 +1,6 @@
-import numpy as np
 import pandas as pd
 from pathlib import Path
+from rdkit import Chem
 
 from .settings import ValidationError
 
@@ -21,7 +21,7 @@ def is_csv_single_column(csv_path: PathLike, first_n_rows: int = 5) -> bool:
         csv_path).suffix == ".csv", "This function expects a .csv file path."
     try:
         # Read the header and the first few rows
-        df = pd.read_csv(csv_path, nrows=first_n_rows)
+        df = pd.read_csv(csv_path, nrows=first_n_rows, comment='#')
         columns = df.columns.tolist()
         # Check if there's only one column and the column name is supported
         if len(columns) != 1 or columns[0] not in CSV_COL_NAMES:
@@ -40,21 +40,22 @@ def is_txt_single_column(txt_path: PathLike, first_n_rows: int = 5) -> bool:
     :param txt_path: Path to the .txt file.
     :param first_n_rows: Number of rows to check for validation.
     """
-    assert Path(
-        txt_path).suffix == ".txt", "This function expects a .txt file path."
-    try:
-        # Read only the first few rows
-        data = np.loadtxt(txt_path,
-                          dtype=str,
-                          comments='#',
-                          ndmin=1,
-                          max_rows=first_n_rows)
-        # Check if the data is a single column:
-        # ndim == 1 for 1D array, 2D array with shape (n, 1)
-        return data.ndim == 1 or (data.ndim == 2 and data.shape[1] == 1)
-    except Exception as e:
-        print(f"Error reading file: {e}")
-        return False
+    txt_path = Path(txt_path)
+    assert txt_path.suffix == ".txt", "This function expects a .txt file path."
+    for line in txt_path.read_text().splitlines()[:first_n_rows]:
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue  # Skip empty lines and comments
+
+        tokens = line.split()
+        if len(tokens) != 1:
+            return False  # More than one column
+
+        smiles = tokens[0]
+        if Chem.MolFromSmiles(smiles) is None:
+            return False  # Invalid SMILES
+
+    return True
 
 
 def validate_input(input_file_or_dir: PathLike) -> str:
