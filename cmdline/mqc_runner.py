@@ -2,9 +2,10 @@
 """
 Commandline API to run the molecular geometry optimization and property calculation pipeline.
 
-Import the parent directory to the system path to run this script from anywhere.
+Configure environment variables to allow this script to be executed from any location.
 ```
 export PATH="/path/to/mqc_pipeline/cmdline:$PATH"
+export PYTHONPATH="/path/to/mqc_pipeline:$PYTHONPATH"
 ```
 
 Usage:
@@ -23,8 +24,6 @@ import argparse
 import subprocess
 from pathlib import Path
 
-from mqc_pipeline.workflow import pipeline
-from mqc_pipeline.workflow.io import read_smiles, read_xyz_dir
 from mqc_pipeline.settings import PipelineSettings
 from mqc_pipeline.validate import validate_input
 from mqc_pipeline.util import logger, change_dir
@@ -115,28 +114,37 @@ def main():
         # This is useful for new user to set up the configuration file.
         PipelineSettings.write_default_config_to_yaml(
             args.write_default_config)
-        print(
-            f"Default configuration file written to {args.write_default_config}"
-        )
+        msg = f"Default configuration file written to {args.write_default_config}"
+        logger.info(msg)
+        print(msg)
         return
 
     if args.config is None:
         raise SystemExit("No configuration file provided.")
 
-    settings = PipelineSettings.from_yaml(args.config)
-
-    # Detailed validation of the input file or directory
-    validate_input(settings.input_file_or_dir)
+    try:
+        settings = PipelineSettings.from_yaml(args.config)
+        # Detailed validation of the input file or directory
+        validate_input(settings.input_file_or_dir)
+    except Exception as e:
+        logger.error(str(e))
+        print(str(e))
+        raise SystemExit(1)
 
     logger.info(f"Settings:\n{pprint.pformat(dict(settings))}")
 
     if settings.num_jobs == 0:
+        # Import here to speed up the startup time of the script
+        from mqc_pipeline.workflow.pipeline import run_from_config_settings
         # Run the pipeline locally without SLURM orchestration
         logger.info(
             "Running the pipeline locally without SLURM orchestration.")
-        pipeline.run_from_config_settings(settings)
+        run_from_config_settings(settings)
         logger.info("Pipeline finished successfully.")
         return
+
+    # Import here to speed up the startup time of the script
+    from mqc_pipeline.workflow.io import read_smiles, read_xyz_dir
 
     input_path = Path(settings.input_file_or_dir)
     _cached_config_path = input_path.parent.resolve() / "_config.pkl"
@@ -267,7 +275,9 @@ def _submit_one_slurm_job(config: PipelineSettings,
 
     if dry_run:
         # Print the command instead of executing it
-        print(f"Dry run: wrote {sbatch_sh_path}")
+        msg = f"Dry run: wrote {sbatch_sh_path}"
+        logger.info(msg)
+        print(msg)
         return None
 
     # Submit the job using sbatch
