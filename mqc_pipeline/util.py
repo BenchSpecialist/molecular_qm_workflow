@@ -6,7 +6,9 @@ import subprocess
 from loguru import logger
 from functools import wraps
 from contextlib import contextmanager
+from typing import Callable, TypeVar, Any, Tuple
 
+T = TypeVar('T')
 # Remove the default loguru handler
 logger.remove()
 
@@ -46,6 +48,22 @@ def has_nvidia_gpu():
         return result.returncode == 0 and len(result.stdout) > 0
     except FileNotFoundError:
         return False
+
+
+def timeit(func: Callable[..., T], *args: Any,
+           **kwargs: Any) -> Tuple[T, float]:
+    """
+    Execute a function and return both its result and execution time.
+
+    :param func: Function to execute
+    :param args: Positional arguments for the function
+    :param kwargs: Keyword arguments for the function
+    :return: Tuple of (function_result, execution_time_in_seconds)
+    """
+    start_time = time.perf_counter()
+    result = func(*args, **kwargs)
+    duration = time.perf_counter() - start_time
+    return result, duration
 
 
 def timer(func):

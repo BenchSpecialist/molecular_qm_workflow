@@ -2,8 +2,9 @@ import time
 import json
 import numpy as np
 from pathlib import Path
+from functools import lru_cache
 
-from ..util import logger
+from ..util import logger, timeit
 
 try:
     from gpu4pyscf.dft import rks, uks
@@ -18,6 +19,7 @@ from ..constants import HARTREE_TO_EV
 from ..settings import PySCFOption, ESPGridsOption
 
 from .esp import generate_esp_grids, get_esp_range
+from .volume import get_vdw_volume
 from .keys import (DFT_ENERGY_KEY, HOMO_KEY, LUMO_KEY, ESP_MIN_KEY,
                    ESP_MAX_KEY, DIPOLE_X_KEY, DIPOLE_Y_KEY, DIPOLE_Z_KEY,
                    DFT_FORCES_KEY, CHELPG_CHARGE_KEY)
@@ -40,11 +42,18 @@ def _is_scf_done(mf_obj) -> bool:
     return mf_obj.e_tot != 0
 
 
-def get_freq_info(mf_obj):
-    """
-    Compute Hessian and return frequency information
-    """
+@lru_cache(maxsize=1)
+def _import_thermo():
+    """Import thermo module once and cache it."""
     from pyscf.hessian import thermo
+    return thermo
+
+
+def get_thermo_info(mf_obj, unique_id: str = ''):
+    """
+    Compute Hessian and return frequency and thermochemical properties
+    """
+    thermo = _import_thermo()
     if not _is_scf_done(mf_obj):
         raise RuntimeError(
             "Freq: No SCF calculation performed. Please run SCF first.")
@@ -53,8 +62,43 @@ def get_freq_info(mf_obj):
     freq_info = thermo.harmonic_analysis(mf_obj.mol,
                                          hessian,
                                          imaginary_freq=False)
+    if freq_info['freq_wavenumber'] is not None and (
+            freq_info['freq_wavenumber'] < 0).any():
+        freq_info_file = Path(f"negative_freqs_{unique_id}.json").resolve()
+        with open(freq_info_file, 'w') as f:
+            json.dump(freq_info, f, cls=NumpyEncoder)
+        logger.warning(
+            "Negative frequencies detected; structure may not be a equilibrium geometry. "
+            f"Save freq information to file: {freq_info_file}.")
+        return
 
-    return freq_info
+    # Only calculate thermochemical properties for equilibrium geometry
+    thermo_info = thermo.thermo(mf_obj,
+                                freq_info['freq_au'],
+                                temperature=298.15,
+                                pressure=101325)
+    thermo_info.update(freq_info)
+    return thermo_info
+
+
+@lru_cache(maxsize=1)
+def _import_polarizability():
+    from gpu4pyscf.properties import polarizability
+    return polarizability
+
+
+def get_isotropic_polarizability(mf_obj) -> float:
+    if not _is_scf_done(mf_obj):
+        raise RuntimeError(
+            "Polarizability: No SCF calculation performed. Please run SCF first."
+        )
+
+    polarizability = _import_polarizability()
+    # Get the full 3x3 polarizability tensor
+    alpha_tensor = polarizability.eval_polarizability(mf_obj)
+    # Isotropic averaging
+    alpha_iso = float(np.trace(alpha_tensor) / 3.0)
+    return alpha_iso
 
 
 def get_quadrupole_moment(
@@ -119,9 +163,11 @@ def get_default_properties(st: Structure, mf, rdm1) -> Structure:
 def get_properties_neutral(st: Structure,
                            pyscf_options: PySCFOption,
                            esp_options: ESPGridsOption,
-                           return_chelpg_chg: bool = True,
                            return_gradient: bool = False,
+                           return_chelpg_chg: bool = True,
                            return_freq: bool = False,
+                           return_volume: bool = False,
+                           return_polarizability: bool = False,
                            return_quadrupole: bool = False) -> Structure:
     """
     Compute properties for the given structure (neutral molecule) using PySCF.
@@ -177,34 +223,46 @@ def get_properties_neutral(st: Structure,
             # Evaluate CHELPG charges and transfers data from GPU (cupy) to CPU (numpy)
             # CHELPG method fits atomic charges to reproduce ESP at a number of points
             # around the molecule.
-            chelpg_charges = chelpg.eval_chelpg_layer_gpu(mf).get()
-            st.atom_property[CHELPG_CHARGE_KEY] = chelpg_charges
+            st.atom_property[CHELPG_CHARGE_KEY] = chelpg.eval_chelpg_layer_gpu(
+                mf).get()
     else:
         logger.warning(
             "CHELPG charges and ESP calculations are not available without GPU."
         )
 
     if return_gradient:
-        gradients_arr = mf.Gradients().kernel()
+        gradients_arr, st.metadata['dft_gradient_duration'] = timeit(
+            mf.Gradients().kernel)
         st.save_gradients(gradients_arr, prop_key=DFT_FORCES_KEY)
+
+    if return_freq:
+        thermo_info, st.metadata['dft_hessian_duration'] = timeit(
+            get_thermo_info, mf)
+        if thermo_info:
+            # Save ZPE, E_0K, E_tot, H_tot, G_tot, Cv_tot
+            st.save_thermo_info(thermo_info)
 
     if return_quadrupole:
         st.property['quadrupole_debyeAngstrom'] = get_quadrupole_moment(
             mf, rdm1)
 
-    if return_freq:
-        t_hessian_start = time.perf_counter()
-        freq_info = get_freq_info(mf)
-        st.metadata['dft_freq_calc_duration'] = time.perf_counter(
-        ) - t_hessian_start
-        freq_info_file = Path(f"freq_info_{st.unique_id}.json").resolve()
-        with open(freq_info_file, 'w') as f:
-            json.dump(freq_info, f, indent=2, cls=NumpyEncoder)
-        logger.info(f"Frequency information saved to {freq_info_file}.")
+    if return_volume:
+        st.property['vdw_volume_angstrom3'], st.metadata[
+            'dft_vdw_volume_duration'] = timeit(
+                get_vdw_volume,
+                coords_angstrom=mol.atom_coords(),
+                atomic_numbers=mol.atom_charges(),
+                use_gpu=_USE_GPU)
+
+    if return_polarizability and st.multiplicity == 1:
+        # Backend function only supports closed-shell systems
+        st.property['alpha_iso_au'], st.metadata[
+            'dft_polarizability_duration'] = timeit(
+                get_isotropic_polarizability, mf)
 
     # PySCF is not expected to change the order of atoms, but we update it just in case
     st.elements = [mol.atom_symbol(i) for i in range(mol.natm)]
     st.atomic_numbers = [mol.atom_charge(i) for i in range(mol.natm)]
 
-    st.metadata['dft_prop_calc_duration'] = time.perf_counter() - t_start
+    st.metadata['dft_prop_duration'] = time.perf_counter() - t_start
     return st

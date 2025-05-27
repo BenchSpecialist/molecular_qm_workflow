@@ -159,8 +159,6 @@ def optimize_by_pyscf(st: Structure,
     st.elements = [
         mol_optimized.atom_symbol(i) for i in range(mol_optimized.natm)
     ]
-    st.atomic_numbers = [
-        mol_optimized.atom_charge(i) for i in range(mol_optimized.natm)
-    ]
+    st.atomic_numbers = mol_optimized.atom_charges().tolist()
 
     return st
