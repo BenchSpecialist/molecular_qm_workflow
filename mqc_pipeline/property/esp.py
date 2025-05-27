@@ -1,22 +1,28 @@
-import importlib
 import numpy as np
+from functools import lru_cache
 
-from ..util import logger
+from ..constants import ANGSTROM_TO_BOHR, HARTREE_TO_EV, VDW_RADII_ANGSTROM
 
-# Dynamic imports of GPU modules
-# This is done to avoid import errors when running on CPU-only systems
 try:
-    cupy = importlib.import_module('cupy')
-    int1e_grids = importlib.import_module('gpu4pyscf.gto.int3c1e').int1e_grids
-    _USE_GPU = True
+    import cupy
+    _CUPY_AVAILABLE = True
 except (ImportError, AttributeError) as e:
-    _USE_GPU = False
-
-from ..constants import ANGSTROM_TO_BOHR, HARTREE_TO_EV
+    _CUPY_AVAILABLE = False
 
 # If the absolute value of the ESP for closed-shell systems is greater than this
 # threshold, the ESP calculation is considered to be unreliable.
 _ESP_ABS_THRESHOLD_EV_SPIN0 = 27
+
+
+@lru_cache(maxsize=1)
+def _import_int3c1e():
+    try:
+        from gpu4pyscf.gto import int3c1e
+    except (ImportError, AttributeError) as e:
+        raise RuntimeError(
+            f"Required GPU module 'gpu4pyscf.gto.int3c1e' not available: {str(e)}. "
+            "Please ensure gpu4pyscf is installed correctly.")
+    return int3c1e
 
 
 def _get_esp_radii(solvent_probe: float) -> np.ndarray:
@@ -32,24 +38,10 @@ def _get_esp_radii(solvent_probe: float) -> np.ndarray:
                           the solvent-inaccessible boundary.
 
     :return: array of modified van der Waals radii in Bohr units for elements
-             up to Z=56 (Barium). The first element (index 0) represents a ghost atom.
-             Each subsequent index corresponds to the atomic number Z.
+             up to Z=56 (Barium).
     """
-    esp_radii = ANGSTROM_TO_BOHR * np.array(
-        [0,                                              # Ghost atom
-         0.30,                                     1.22, # 1s
-         1.23, 0.89, 0.88, 0.77, 0.70, 0.66, 0.58, 1.60, # 2s2p
-         1.40, 1.36, 1.25, 1.17, 1.10, 1.04, 0.99, 1.91, # 3s3p
-         2.03, 1.74,                                     # 4s (K, Ca)
-         1.44, 1.32, 1.22, 1.19, 1.17, 1.17, 1.16, 1.15, 1.17, 1.25, # 3d (Sc,.., Zn)
-         1.25, 1.22, 1.21, 1.17, 1.14, 1.98,             # 4p (Ga, .., Kr)
-         2.22, 1.92,                                     # 5s (Rb, Sr)
-         1.62, 1.45, 1.34, 1.29, 1.27, 1.24, 1.25, 1.28, 1.34, 1.41, # 4d (Y,..,Cd)
-         1.50, 1.40, 1.41, 1.37, 1.33, 2.09,             # 5p (In,.., Xe)
-         2.35, 1.98]                                     # 6s
-    )  # yapf: disable
-
     prob_radius = solvent_probe * ANGSTROM_TO_BOHR
+    esp_radii = ANGSTROM_TO_BOHR * np.array(VDW_RADII_ANGSTROM)
     esp_radii += prob_radius
 
     return esp_radii
@@ -134,13 +126,14 @@ def _get_esp_range_old(mol, grids: np.ndarray,
     outside the range of (-1, 1).
     """
     import pyscf
+    import importlib
     # Dynamic imports using importlib with error handling
     try:
         cupy = importlib.import_module('cupy')
         int3c2e = importlib.import_module('gpu4pyscf.df.int3c2e')
     except ImportError as e:
         raise RuntimeError(
-            f"Required GPU modules not available: {e}. Please ensure cupy and gpu4pyscf are installed."
+            f"Required GPU modules not available: {str(e)}. Please ensure cupy and gpu4pyscf are installed."
         )
 
     # Convert input data to CuPy arrays for GPU acceleration
@@ -185,14 +178,14 @@ def get_esp_range(mol, grids: np.ndarray,
 
     :return: Minimum and maximum ESP values across all grid points in eV unit.
     """
-    if not _USE_GPU:
+    if not _CUPY_AVAILABLE:
         raise RuntimeError(
-            "Required GPU modules not available. Please ensure cupy and gpu4pyscf are installed correctly."
-        )
+            "get_esp_range: Required CuPy package not available.")
+    int3c1e = _import_int3c1e()
     # Calculate electronic contribution to ESP at grid points
     # This integral represents the Coulomb potential from the electron density
     # v_grids_e = ∫ ρ(r')/|r-r'| dr', where ρ is the electron density
-    v_grids_e = int1e_grids(mol, grids, dm=one_rdm)
+    v_grids_e = int3c1e.int1e_grids(mol, grids, dm=one_rdm)
 
     # Move calculations to GPU for better performance
     qm_xyz = cupy.array(mol.atom_coords())
