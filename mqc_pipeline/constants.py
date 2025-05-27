@@ -1,5 +1,6 @@
 from scipy.constants import physical_constants
 from pyscf.data.nist import BOHR
+from ase.data import chemical_symbols
 
 HARTREE_TO_EV = physical_constants["Hartree energy in eV"][0]
 EV_TO_HARTREE = 1 / HARTREE_TO_EV
@@ -23,3 +24,9 @@ VDW_RADII_ANGSTROM = (
     1.50, 1.40, 1.41, 1.37, 1.33, 2.09,             # 5p (In,.., Xe)
     2.35, 1.98                                      # 6s
 )  # yapf: disable
+
+# Chemical symbols to atomic numbers
+ELEMENT_TO_ATOMIC_NUMBER = {
+    symbol: i
+    for i, symbol in enumerate(chemical_symbols)
+}

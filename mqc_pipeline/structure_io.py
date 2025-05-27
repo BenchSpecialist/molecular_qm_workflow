@@ -14,6 +14,7 @@ from typing import Union, BinaryIO, TextIO, Iterable
 
 from .common import Structure
 from .property import DFT_ENERGY_KEY
+from .constants import ELEMENT_TO_ATOMIC_NUMBER
 
 # Type aliases
 StructureType = Union[Structure, Iterable[Structure]]
@@ -164,6 +165,9 @@ def read_xyz(xyz_path: str, parse_comment=False) -> Structure:
         elements.append(el)
         xyz.append([float(x), float(y), float(z)])
 
+    atomic_numbers = [ELEMENT_TO_ATOMIC_NUMBER[el] for el in elements]
+    mult = 1 + Structure.get_unpaired_electrons(atomic_numbers, charge=0)
+
     def _comment_looks_like_smiles(line):
         # Basic SMILES pattern - atoms, bonds, brackets, rings
         s = line.strip()
@@ -175,6 +179,8 @@ def read_xyz(xyz_path: str, parse_comment=False) -> Structure:
                          xyz=np.array(xyz),
                          smiles=lines[1].strip()
                          if _comment_looks_like_smiles(lines[1]) else None,
+                         atomic_numbers=atomic_numbers,
+                         multiplicity=mult,
                          metadata={'from_xyz_file': str(xyz_path)})
     else:
         # Example comment line:

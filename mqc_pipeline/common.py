@@ -109,6 +109,19 @@ class Structure:
             unit=COORDINATE_UNIT)
         return mol
 
+    @staticmethod
+    def get_unpaired_electrons(atom_numbers: list[int], charge: int) -> int:
+        """
+        Calculate the number of unpaired electrons based on atomic numbers and charge.
+
+        :param atom_numbers: List of atomic numbers for each atom in the molecule
+        :param charge: Total charge of the molecule
+        :return: Number of unpaired electrons (0 or 1)
+        """
+        # Only the parity matters for unpaired electrons calculation
+        # So we can take modulo 2 before summing to avoid overflow
+        return (sum(num % 2 for num in atom_numbers) - charge % 2) % 2
+
     def __eq__(self, other):
         if not isinstance(other, Structure):
             return NotImplemented
