@@ -18,10 +18,13 @@ Usage:
 - Batch inputs and write out SLURM scripts, but NOT submit for debugging:
     $ mqc_runner.py --config <config.yaml> --dry-run
 """
+import os
+import shutil
 import pprint
 import pickle
 import argparse
 import subprocess
+import pandas as pd
 from pathlib import Path
 
 from mqc_pipeline.settings import PipelineSettings
@@ -30,13 +33,18 @@ from mqc_pipeline.util import logger, change_dir
 
 _PYTHON_EXE = "/mnt/filesystem/dev_renkeh/mqc-env/bin/python"
 
+_SLURM_SH_DIR = "slurm_scripts"
+_SLURM_LOG_DIR = "slurm_logs"
+_CACHED_CONFIG = "_config.pkl"
+
 SLURM_CMD = """#!/bin/bash
 
 #SBATCH --job-name={JOB_NAME}_{BATCH_ID}
 #SBATCH --output={JOB_LOG}
 #SBATCH --error={JOB_LOG}
 #SBATCH --nodes=1            # Use 1 node
-#SBATCH --ntasks-per-node=1  # CPU spec: Request 1 MPI task/independent process
+#SBATCH --ntasks-per-node=1  # 1 MPI task/independent process
+#SBATCH --cpus-per-task=16   # Total 128 CPUs available per node
 #SBATCH --gres=gpu:1         # Allocate 1 GPU
 #SBATCH --partition=high-priority
 #SBATCH --mem=100G           # 1500 GB limit per compute node, CPUs could be oversubscribed based on request mem
@@ -45,7 +53,7 @@ SLURM_CMD = """#!/bin/bash
 echo "Allocated GPU: $CUDA_VISIBLE_DEVICES"
 nvidia-smi
 
-srun {PYTHON_EXE} << EOF
+srun --cpu-bind=none {PYTHON_EXE} << EOF
 import pickle
 from mqc_pipeline.workflow.pipeline import run_one_batch
 
@@ -87,11 +95,25 @@ def _parse_args():
         "For debug: Batch inputs, write sbatch script and print command without executing it. "
     )
 
+    parser.add_argument("--combine-results",
+                        action="store_true",
+                        help="Combine results from all batches.")
+
+    parser.add_argument(
+        "--cleanup",
+        action="store_true",
+        help="Remove temporary files after combining results. "
+        "Deletes batch directories, SLURM scripts/logs, and cached config. "
+        "Can only be used with --combine-results to prevent accidental deletion "
+        "of batch results before they are combined into final output files. "
+        "Use this to clean workspace after successful pipeline completion.")
+
     return parser.parse_args()
 
 
 def _count_files(directory) -> int:
-    return sum(1 for p in Path(directory).iterdir() if p.is_file())
+    return sum(1 for p in Path(directory).iterdir()
+               if p.is_file() and p.suffix == '.xyz')
 
 
 def _distribute_inputs(num_inputs, num_jobs) -> list[int]:
@@ -103,11 +125,74 @@ def _distribute_inputs(num_inputs, num_jobs) -> list[int]:
     return batch_sizes
 
 
+def _combine_csv_files(batch_dirs: list[Path], filename: str) -> None:
+    """
+    Combine CSV files with the same name from all batch directories.
+
+    :param output_dir: List of batch subdirectories
+    :param filename: Name of the CSV file to combine (e.g., "molecule_property.csv")
+    """
+    csv_files = [
+        batch_dir / filename for batch_dir in batch_dirs
+        if (batch_dir / filename).exists()
+    ]
+    if not csv_files:
+        logger.warning(f"No {filename} files found in batch directories")
+        return
+
+    # Read and combine all CSV files
+    dataframes = [pd.read_csv(csv_file) for csv_file in csv_files]
+    combined_df = pd.concat(dataframes, ignore_index=True)
+
+    # Write combined df to a new CSV file in the parent directory
+    output_file = batch_dirs[0].parent / filename
+    combined_df.to_csv(output_file, index=False)
+
+    print(f"Combined {len(csv_files)} {filename} files into {output_file}")
+
+
 def main():
     """
     Main function to run the pipeline.
     """
     args = _parse_args()
+
+    if args.cleanup and not args.combine_results:
+        raise SystemExit(
+            "Error: --cleanup can only be used with --combine-results flag "
+            "to prevent accidental deletion of batch results before combining."
+        )
+
+    if args.combine_results:
+        output_dir = Path(os.environ.get("MQC_OUTPUT_DIR",
+                                         Path.cwd())).resolve()
+
+        batch_dirs = [
+            d for d in output_dir.iterdir()
+            if d.is_dir() and d.name.startswith("batch_")
+        ]
+        if batch_dirs:
+            outfiles_to_combine = ("molecule_property.csv",
+                                   "atom_property.csv", "metadata.csv")
+
+            for outfile in outfiles_to_combine:
+                _combine_csv_files(batch_dirs, outfile)
+
+        if args.cleanup:
+            Path(output_dir / _CACHED_CONFIG).unlink(missing_ok=True)
+            _dirs_to_remove = [
+                d for d in (output_dir / _SLURM_SH_DIR,
+                            output_dir / _SLURM_LOG_DIR) if d.exists()
+            ]
+            _dirs_to_remove.extend(batch_dirs)
+            for dir in _dirs_to_remove:
+                try:
+                    shutil.rmtree(dir)
+                    print(f"Removed {dir}")
+                except OSError as e:
+                    print(f"Failed to remove {dir}: {str(e)}")
+            print('Cleanup completed.')
+        return
 
     if args.write_default_config:
         # Write the default configuration file and exit the program.
@@ -147,13 +232,14 @@ def main():
     from mqc_pipeline.workflow.io import read_smiles, read_xyz_dir
 
     input_path = Path(settings.input_file_or_dir)
-    _cached_config_path = input_path.parent.resolve() / "_config.pkl"
+    _cached_config_path = input_path.parent.resolve() / _CACHED_CONFIG
     # Caching the validated settings for batch jobs via SLURM
     with open(_cached_config_path, "wb") as f:
         pickle.dump(settings, f)
 
     # Create output directory for batch files and logs
     output_dir = Path(settings.output_dir).resolve()
+    os.environ["MQC_OUTPUT_DIR"] = str(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     submitted_jobs = []
@@ -252,11 +338,11 @@ def _submit_one_slurm_job(config: PipelineSettings,
     Launch a single sbatch job.
     """
     output_dir = Path(config.output_dir).resolve()
-    _slurm_sh_dir = output_dir / "slurm_scripts"
+    _slurm_sh_dir = output_dir / _SLURM_SH_DIR
     _slurm_sh_dir.mkdir(parents=True, exist_ok=True)
     sbatch_sh_path = _slurm_sh_dir / f"submit_{batch_id}.sh"
 
-    _slum_log_dir = output_dir / "slurm_logs"
+    _slum_log_dir = output_dir / _SLURM_LOG_DIR
     _slum_log_dir.mkdir(parents=True, exist_ok=True)
     job_log = _slum_log_dir / f"{batch_id}.log"
 
