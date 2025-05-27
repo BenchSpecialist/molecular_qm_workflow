@@ -1,8 +1,9 @@
 import yaml
+from enum import Enum
 from pathlib import Path
 from typing import Literal
 from dataclasses import dataclass
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 ### Module constants ###
 METHOD_AIMNet2 = 'AIMNET2'
@@ -21,11 +22,34 @@ _DEFAULT_GRIDS_LEVEL = 3  # default: 3 in pyscf
 
 SUPPORTED_COLUMNAR_FILE_FORMATS = ('csv', 'parquet')
 
-SUPPORTED_ADDITIONAL_PROPS = ("chelpg_charges", "freq", "quadrupole")
-
 
 class ValidationError(Exception):
     pass
+
+
+class AdditionalProperty(Enum):
+    """Supported additional properties."""
+    CHELPG_CHARGES = "chelpg_charges"
+    FORCES = "forces"
+    FREQ = "freq"
+    VDW_VOLUME = "vdw_volume"
+    ISOTROPIC_POLARIZABILITY = "isotropic_polarizability"
+    QUADRUPOLE = "quadrupole"
+
+    @classmethod
+    def to_kwargs_mapping(cls) -> dict[str, str]:
+        """Get mapping from property names to function parameter names."""
+        return {
+            cls.CHELPG_CHARGES.value: "return_chelpg_chg",
+            cls.FORCES.value: "return_gradient",
+            cls.FREQ.value: "return_freq",
+            cls.VDW_VOLUME.value: "return_volume",
+            cls.ISOTROPIC_POLARIZABILITY.value: "return_polarizability",
+            cls.QUADRUPOLE.value: "return_quadrupole"
+        }
+
+
+SUPPORTED_ADDITIONAL_PROPS = tuple(prop.value for prop in AdditionalProperty)
 
 
 @dataclass(slots=True)
@@ -89,14 +113,14 @@ class PipelineSettings(BaseModel):
     # Input and job settings
     input_file_or_dir: str = Field(
         description=
-        "Path to a text/csv file that contains a single column of smiles strings. "
-        "Alternatively, a directory containing multiple xyz files.")
+        "Path to a text/csv file that contains a single column of smiles strings.\n"
+        "# Alternatively, a directory containing multiple xyz files.")
 
     num_jobs: int = Field(
         default=1,
         ge=0,
-        description="Number of SLURM batch jobs to launch. "
-        "If set to 0, the pipeline will run locally without SLURM orchestration."
+        description="Number of SLURM batch jobs to launch.\n"
+        "# If set to 0, the pipeline will run locally without SLURM orchestration."
     )
 
     job_name: str = Field(
@@ -104,8 +128,11 @@ class PipelineSettings(BaseModel):
         description="Name of the SLURM job. Only relevant when num_jobs > 0.")
 
     # Calculation parameters
-    geometry_opt_method: str = Field(
-        default=METHOD_DFT, description="Method for geometry optimization.")
+    geometry_opt_method: str | None = Field(
+        default=METHOD_DFT,
+        description="Method for geometry optimization.\n"
+        "# If set to `null` and use xyz inputs, geometry optimization is skipped.\n"
+        f"# Supported methods: {', '.join(SUPPORTED_GEOMETRY_OPT_METHODS)}. ")
 
     ## ASE related fields: used only when geometry_opt_method is 'aimnet2'
     ase_optimizer_name: str = Field(
@@ -153,29 +180,38 @@ class PipelineSettings(BaseModel):
 
     # Property calculation settings
     additional_properties: list[str] = Field(
-        default=["chelpg_charges"],
-        description="Additional DFT properties to compute. "
-        f"Supported properties: {', '.join(SUPPORTED_ADDITIONAL_PROPS)}. "
-        f"Note that total electronic energy, HOMO/LUMO, dipole moment, ESP range are always returned."
+        default=["chelpg_charges", "forces"],
+        description="Additional DFT properties to compute.\n"
+        f"# Supported properties: {', '.join(SUPPORTED_ADDITIONAL_PROPS)}\n"
+        f"# Total electronic energy, HOMO/LUMO, dipole moment, ESP range are always returned."
     )
 
     # Output settings
     output_dir: str = Field(
         default=Path.cwd().resolve(),
-        description="Directory to save the output files. "
-        "The default is the current working directory that cmdline unitlity is called."
+        description="Directory to save the output files.\n"
+        "# Default to the current working directory where the cmdline unitlity is called."
     )
 
     output_file_format: Literal["csv", "parquet", "parq"] = Field(
         default="csv",
         description=
-        "Output file format to write molecule-level and atom-level properties. "
-        f"Supported formats: {', '.join(SUPPORTED_COLUMNAR_FILE_FORMATS)}. Default is csv."
-    )
+        "Output file format to write molecule-level and atom-level properties.\n"
+        f"# Supported formats: {', '.join(SUPPORTED_COLUMNAR_FILE_FORMATS)}.")
 
     progress_log_interval: int = Field(
         default=10,
         description="Interval for logging progress during batch processing.")
+
+    def get_property_kwargs(self) -> dict[str, bool]:
+        """
+        Convert additional_properties list to keyword arguments
+        """
+        prop_mapping = AdditionalProperty.to_kwargs_mapping()
+        return {
+            param_name: prop_name in self.additional_properties
+            for prop_name, param_name in prop_mapping.items()
+        }
 
     def to_ase_options(self) -> ASEOption:
         """
@@ -223,11 +259,12 @@ class PipelineSettings(BaseModel):
         """
         Get the default settings as a YAML string with descriptions as comments.
         """
-        schema = cls.schema()
+        schema = cls.model_json_schema()
         yaml_lines = []
         for key, val_dict in schema["properties"].items():
             description = val_dict.get("description", "")
             default_value = val_dict.get("default", " ")
+            default_value = "null" if default_value is None else default_value
             if description:
                 yaml_lines.append(f"# {description}")
             yaml_lines.append(f"{key}: {default_value}")
@@ -274,12 +311,32 @@ class PipelineSettings(BaseModel):
         return str(input_file_or_dir)
 
     @field_validator('geometry_opt_method')
-    def validate_geometry_opt_method(cls, method: str) -> str:
-        if method.upper() not in SUPPORTED_GEOMETRY_OPT_METHODS:
+    def validate_geometry_opt_method_basic(cls,
+                                           method: str | None) -> str | None:
+        """
+        Basic validation for geometry optimization method.
+        """
+        if method is not None and method.upper(
+        ) not in SUPPORTED_GEOMETRY_OPT_METHODS:
             raise ValidationError(
-                f"Unsupported geometry optimization method: {method}. Supported methods are: {', '.join(SUPPORTED_GEOMETRY_OPT_METHODS)}"
+                f"Unsupported geometry optimization method: {method}. "
+                f"Supported methods are: {', '.join(SUPPORTED_GEOMETRY_OPT_METHODS)}"
             )
         return method
+
+    @model_validator(mode='after')
+    def validate_geometry_opt_with_input(self) -> 'PipelineSettings':
+        """
+        Cross-field validation for geometry optimization method and input type.
+        """
+        # xyz inputs are allowed to skip geometry optimization,
+        # so method can be None.
+        if (self.geometry_opt_method is None
+                and not Path(self.input_file_or_dir).is_dir()):
+            raise ValidationError(
+                "Geometry optimization method cannot be None for SMILES inputs. "
+                "Please specify a valid geometry optimization method.")
+        return self
 
     @field_validator('ase_optimizer_name')
     def validate_ase_optimizer(cls, optimizer: str) -> str:

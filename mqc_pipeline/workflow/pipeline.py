@@ -1,7 +1,7 @@
 import os
 import time
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 from functools import partial
 
 from ..settings import PipelineSettings, METHOD_AIMNet2, METHOD_DFT
@@ -28,8 +28,9 @@ def _log_failed_inputs(error_msg: str) -> None:
         fp.write(f'{error_msg}\n')
 
 
-def run_one_molecule(smiles_or_st: str | Structure, opt_func: Callable,
-                     prop_func: Callable) -> Structure | None:
+def run_one_molecule(smiles_or_st: str | Structure,
+                     prop_func: Callable,
+                     opt_func: Optional[Callable] = None) -> Structure | None:
     t_start = time.perf_counter()
     if isinstance(smiles_or_st, Structure):
         st = smiles_or_st
@@ -48,14 +49,19 @@ def run_one_molecule(smiles_or_st: str | Structure, opt_func: Callable,
             "Input must be a SMILES string or a Structure object.")
 
     # Geometry optimization
-    try:
-        st = opt_func(st)
-    except Exception as e:
-        err_msg = f"{st.unique_id} (smiles: {st.smiles}): Geometry optimization failed - {str(e)}"
-        _log_failed_inputs(err_msg)
-        return
-    logger.info(
-        f"{st.smiles} (id={st.unique_id}): Geometry optimization converged.")
+    if opt_func is not None:
+        try:
+            st = opt_func(st)
+        except Exception as e:
+            err_msg = f"{st.unique_id} (smiles: {st.smiles}): Geometry optimization failed - {str(e)}"
+            _log_failed_inputs(err_msg)
+            return
+        logger.info(
+            f"{st.smiles} (id={st.unique_id}): Geometry optimization converged."
+        )
+    else:
+        logger.info(
+            f"{st.smiles} (id={st.unique_id}): Skipped geometry optimization.")
 
     # Property calculation
     try:
@@ -80,25 +86,25 @@ def run_one_batch(inputs: list[str] | list[Structure],
     pyscf_options = settings.to_pyscf_options()
     esp_options = settings.to_esp_grids_options()
 
+    # Get property calculation kwargs from settings
+    prop_kwargs = settings.get_property_kwargs()
+
     # Set backend used for geometry optimization
-    if settings.geometry_opt_method.upper() == METHOD_AIMNet2:
+    if settings.geometry_opt_method is None:
+        opt_func = None
+    elif settings.geometry_opt_method.upper() == METHOD_AIMNet2:
         opt_func = partial(optimize.optimize_by_aimnet2,
                            options=settings.to_ase_options)
-    if settings.geometry_opt_method.upper() == METHOD_DFT:
+    elif settings.geometry_opt_method.upper() == METHOD_DFT:
         opt_func = partial(optimize.optimize_by_pyscf, options=pyscf_options)
+        # DFT-optimized structures already save the gradient info.
+        prop_kwargs.update({'return_gradient': False})
 
     # Set up property calculator, get all properties
-    prop_func = partial(
-        get_properties_neutral,
-        pyscf_options=pyscf_options,
-        esp_options=esp_options,
-        # DFT-optimized structures already save the gradient info.
-        return_gradient=(
-            settings.geometry_opt_method.upper() == METHOD_AIMNet2),
-        return_chelpg_chg="chelpg_charges" in settings.additional_properties,
-        return_freq="freq" in settings.additional_properties,
-        return_quadrupole="quadrupole" in settings.additional_properties,
-    )
+    prop_func = partial(get_properties_neutral,
+                        pyscf_options=pyscf_options,
+                        esp_options=esp_options,
+                        **prop_kwargs)
 
     # Run the pipeline for each molecule sequentially
     out_sts = []
@@ -107,7 +113,9 @@ def run_one_batch(inputs: list[str] | list[Structure],
     for i, smiles_or_st in enumerate(inputs):
         # The function does error handling/logging internally
         # and returns None if it fails.
-        st = run_one_molecule(smiles_or_st, opt_func, prop_func)
+        st = run_one_molecule(smiles_or_st,
+                              opt_func=opt_func,
+                              prop_func=prop_func)
         if st:
             out_sts.append(st)
         else:
