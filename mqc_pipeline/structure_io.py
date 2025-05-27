@@ -13,8 +13,7 @@ from dataclasses import asdict
 from typing import Union, BinaryIO, TextIO, Iterable
 
 from .common import Structure
-from .property import (DFT_ENERGY_KEY, HOMO_KEY, LUMO_KEY, ESP_MIN_KEY,
-                       ESP_MAX_KEY, DIPOLE_X_KEY, DIPOLE_Y_KEY, DIPOLE_Z_KEY)
+from .property import DFT_ENERGY_KEY
 
 # Type aliases
 StructureType = Union[Structure, Iterable[Structure]]
@@ -27,10 +26,6 @@ SUPPORTED_OBJ_FILE_FORMATS = ['json', 'pickle', 'xyz']
 COLUMNAR_FILE_EXTENSIONS = ('.csv', '.parquet', '.parq')
 
 SHARED_KEYS = ('unique_id', 'smiles')
-
-MOLECULE_LEVEL_PROP_KEYS = (DFT_ENERGY_KEY, HOMO_KEY, LUMO_KEY, ESP_MIN_KEY,
-                            ESP_MAX_KEY, DIPOLE_X_KEY, DIPOLE_Y_KEY,
-                            DIPOLE_Z_KEY)
 
 
 def write(structures: StructureType,
@@ -169,9 +164,17 @@ def read_xyz(xyz_path: str, parse_comment=False) -> Structure:
         elements.append(el)
         xyz.append([float(x), float(y), float(z)])
 
+    def _comment_looks_like_smiles(line):
+        # Basic SMILES pattern - atoms, bonds, brackets, rings
+        s = line.strip()
+        pattern = r'^[A-Za-z0-9\[\]()=#\-+@/\\%.]+$'
+        return bool(re.match(pattern, s)) and len(s) > 0
+
     if not parse_comment:
         return Structure(elements=elements,
                          xyz=np.array(xyz),
+                         smiles=lines[1].strip()
+                         if _comment_looks_like_smiles(lines[1]) else None,
                          metadata={'from_xyz_file': str(xyz_path)})
     else:
         # Example comment line:
@@ -230,9 +233,9 @@ def write_molecule_property(st_or_sts: StructureType,
 
     # One dict per structure
     data = []
+    _mol_keys = [*SHARED_KEYS, 'multiplicity', 'charge']
     for st in sts:
-        # Add shared keys: unique_id, smiles
-        row = {key: getattr(st, key) for key in SHARED_KEYS}
+        row = {key: getattr(st, key) for key in _mol_keys}
         row.update(st.property)
         data.append(row)
     df = pd.DataFrame(data)
