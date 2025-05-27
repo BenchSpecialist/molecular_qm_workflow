@@ -13,7 +13,7 @@ def test_Structure():
 
     # Test that unique_id is generated and check its length
     assert st.unique_id is not None
-    assert len(st.unique_id) == 11
+    assert len(st.unique_id) == 16
     assert st.property == {}
     assert st.metadata == {}
 

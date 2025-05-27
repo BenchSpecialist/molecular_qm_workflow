@@ -19,7 +19,9 @@ import pyscf
 COORDINATE_UNIT = 'angstrom'
 _DEFAULT_CHARGE = 0.
 _DEFAULT_MULTIPLICITY = 1.
-_UNIQUE_KEY_LENGTH = 11
+_UNIQUE_KEY_LENGTH = 16
+
+from .constants import HARTREE_TO_EV
 
 
 @dataclass(slots=True)  # eliminates the __dict__ to reduce memory overhead
@@ -64,6 +66,21 @@ class Structure:
         self.atom_property[f'{prop_key}_x'] = gradients_arr[:, 0].tolist()
         self.atom_property[f'{prop_key}_y'] = gradients_arr[:, 1].tolist()
         self.atom_property[f'{prop_key}_z'] = gradients_arr[:, 2].tolist()
+
+    def save_thermo_info(self, thermo_info: dict) -> None:
+        """
+        Save essential thermochemical properties to the structure properties.
+        """
+        _e_keys = ('ZPE', 'E_0K', 'E_tot', 'H_tot', 'G_tot')
+        self.property.update({
+            f'{key.lower()}_eV':
+            float(value[0] * HARTREE_TO_EV)
+            for key in _e_keys if (value := thermo_info.get(key)) is not None
+        })
+
+        if (cv_data := thermo_info.get('Cv_tot')):
+            cv_value, unit = cv_data
+            self.property[f'Cv_tot_{unit}'] = float(cv_value)
 
     def from_ase_atoms(cls, ase_atoms: Atoms):
         return cls(elements=ase_atoms.get_chemical_symbols(),
