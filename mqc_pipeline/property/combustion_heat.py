@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from rdkit import Chem
 
 from ..constants import HARTREE_TO_EV
+from ..common import Structure
+from ..smiles_util import get_canonical_smiles_ob
 
 
 @dataclass(frozen=True)
@@ -30,8 +32,8 @@ ELEMENT_DATA = {
     'F': ElementCombustionData('HF', 0, 1, -100.45856381466965),
     'Na': ElementCombustionData('Na2O', 0.5, 1, np.nan),
     'Si': ElementCombustionData('SiO2', 2, 1, -440.0005335019524),
-    'P': ElementCombustionData('P2O5', 2.5, 0.5,
-                               -1059.1269704500623),  # by e_total(P4O10)/2
+    # e_total of P2O5 is obtained by dividing e_total of P4O10 by 2
+    'P': ElementCombustionData('P2O5', 2.5, 0.5, -1059.1269704500623),
     'S': ElementCombustionData('SO2', 2, 1, -548.6559640248399),
     'Cl': ElementCombustionData('HCl', 0, 1, -460.8261007532856),
     'K': ElementCombustionData('K2O', 0.5, 1, np.nan),
@@ -40,26 +42,43 @@ ELEMENT_DATA = {
 }
 
 
-def calc_combustion_heat(smiles: str,
+def calc_combustion_heat(smiles_or_st: str | Structure,
                          mol_heat: float = 0) -> tuple[float, str]:
     """
-    Calculate the heat of combustion for a molecule given its SMILES string and DFT energy.
+    Calculate the heat of combustion for a molecule given its SMILES string or
+    a Structure object and DFT energy.
 
-    :param smiles: SMILES string of the molecule
+    :param smiles_or_st: SMILES string of the molecule or a Structure object
     :param mol_heat: Energy of the molecule from DFT in eV
     :return: A tuple containing the heat of combustion in eV and the reaction string
     """
-    if (mol := Chem.MolFromSmiles(smiles)) is None:
-        print(f'Invalid SMILES: {smiles}')
-        return None
-
-    # Add implicit hydrogens
-    mol = Chem.AddHs(mol)
-
-    # Count elements
     ele_count = {key: 0 for key in ELEMENT_DATA.keys()}
-    for atom in mol.GetAtoms():
-        ele_count[atom.GetSymbol()] += 1
+    if isinstance(smiles_or_st, str):
+        smiles = smiles_or_st
+        if (mol := Chem.MolFromSmiles(smiles)) is None:
+            raise ValueError(f'Invalid SMILES: {smiles}')
+
+        # Add implicit hydrogens so H atoms are counted
+        mol = Chem.AddHs(mol)
+
+        # Count elements
+        for atom in mol.GetAtoms():
+            ele_count[atom.GetSymbol()] += 1
+
+    if isinstance(smiles_or_st, Structure):
+        st = smiles_or_st
+        for element in st.elements:
+            if element in ele_count:
+                ele_count[element] += 1
+            else:
+                raise ValueError(
+                    f'Unsupported element {element} for combustion heat calculation.'
+                )
+        if not st.smiles or st.smiles.isspace():
+            # Convert Structure to H-contained SMILES if not provided
+            smiles = get_canonical_smiles_ob(st.to_xyz_block())
+        else:
+            smiles = st.smiles
 
     # Check if nonflammable due to halogen content
     halogen_count = sum(ele_count[x] for x in ['F', 'Cl', 'Br', 'I'])

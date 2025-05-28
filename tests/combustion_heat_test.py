@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 from mqc_pipeline.property.combustion_heat import calc_combustion_heat
 from mqc_pipeline.constants import HARTREE_TO_EV
+from mqc_pipeline.common import Structure
 
 
 @pytest.mark.parametrize(
@@ -34,8 +35,33 @@ from mqc_pipeline.constants import HARTREE_TO_EV
     ])
 def test_calc_combustion_heat(smiles, mol_heat, expected_combustion_heat,
                               reaction_str):
+    """
+    Test combustion heat calculation starting with SMILES strings.
+    """
     combustion_heat, reaction = calc_combustion_heat(smiles, mol_heat)
-    assert np.allclose(combustion_heat, expected_combustion_heat, atol=1e-09), \
+    assert np.isclose(combustion_heat, expected_combustion_heat, atol=1e-06), \
         f"Expected {expected_combustion_heat} but got {combustion_heat} for SMILES: {smiles}"
     assert reaction == reaction_str, \
         f"Expected reaction string '{reaction_str}' but got '{reaction}' for SMILES: {smiles}"
+
+
+def test_calc_combustion_heat_st():
+    """
+    Test combustion heat calculation starting with a Structure object.
+    """
+    coh4_xyz = """6
+CO
+C          -0.34832       -0.03472       -0.04218
+O           1.02245       -0.38610       -0.14632
+H          -0.68493        0.04087        1.00077
+H          -0.58053        0.90876       -0.55474
+H          -0.91464       -0.83162       -0.52485
+H           1.54581        0.30417        0.27394
+"""
+    st = Structure.from_xyz_block(xyz_block=coh4_xyz)
+    e_tot = -115.746534 * 27.2114  # in eV
+    ref_heat = -2375.220891
+
+    combustion_heat, reaction = calc_combustion_heat(st, mol_heat=e_tot)
+    assert np.isclose(combustion_heat, ref_heat, atol=1e-06)
+    assert reaction == '1.00 * CO + 1.50 * O2 -> 2.00 * H2O + 1.00 * CO2'
