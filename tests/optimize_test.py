@@ -9,7 +9,6 @@ from mqc_pipeline.util import has_nvidia_gpu
 
 @pytest.mark.slow
 @pytest.mark.skipif(not has_nvidia_gpu(), reason="Test requires NVIDIA GPU")
-@pytest.mark.skipif(platform.system() != "Linux", reason="Only runs on Linux")
 def test_optimize_by_pyscf():
     xyz_before = [[0.0, 0.0, 0.0], [0.0, 0.0, 3.0]]
     st = Structure(elements=['H', 'H'],

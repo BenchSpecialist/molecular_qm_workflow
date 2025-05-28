@@ -1,8 +1,11 @@
 import numpy as np
 import pytest
+
 from mqc_pipeline.property.combustion_heat import calc_combustion_heat
 from mqc_pipeline.constants import HARTREE_TO_EV
 from mqc_pipeline.common import Structure
+
+from .conftest import requires_openbabel
 
 
 @pytest.mark.parametrize(
@@ -45,6 +48,7 @@ def test_calc_combustion_heat(smiles, mol_heat, expected_combustion_heat,
         f"Expected reaction string '{reaction_str}' but got '{reaction}' for SMILES: {smiles}"
 
 
+@requires_openbabel()
 def test_calc_combustion_heat_st():
     """
     Test combustion heat calculation starting with a Structure object.
