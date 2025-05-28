@@ -8,7 +8,7 @@ from ..settings import PipelineSettings, METHOD_AIMNet2, METHOD_DFT
 from ..common import Structure
 from ..smiles_util import smiles_to_3d_structures_by_rdkit
 from .. import optimize
-from ..property import get_properties_neutral
+from ..property import get_properties_main
 from ..structure_io import write_molecule_property, write_atom_property
 from ..util import logger, setup_logger
 
@@ -101,7 +101,7 @@ def run_one_batch(inputs: list[str] | list[Structure],
         prop_kwargs.update({'return_gradient': False})
 
     # Set up property calculator, get all properties
-    prop_func = partial(get_properties_neutral,
+    prop_func = partial(get_properties_main,
                         pyscf_options=pyscf_options,
                         esp_options=esp_options,
                         **prop_kwargs)

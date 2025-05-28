@@ -178,7 +178,7 @@ def read_xyz(xyz_path: str, parse_comment=False) -> Structure:
         return Structure(elements=elements,
                          xyz=np.array(xyz),
                          smiles=lines[1].strip()
-                         if _comment_looks_like_smiles(lines[1]) else None,
+                         if _comment_looks_like_smiles(lines[1]) else "",
                          atomic_numbers=atomic_numbers,
                          multiplicity=mult,
                          metadata={'from_xyz_file': str(xyz_path)})
