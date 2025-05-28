@@ -1,6 +1,7 @@
 import time
 import numpy as np
 from pathlib import Path
+from functools import lru_cache
 
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -122,17 +123,28 @@ def get_canonical_smiles_rdk(input) -> str:
     return Chem.CanonSmiles(Chem.MolToSmiles(rdkit_mol))
 
 
+@lru_cache(maxsize=1)
+def _import_pybel():
+    """Import pybel module once and cache it."""
+    from openbabel import pybel
+    return pybel
+
+
 def get_canonical_smiles_ob(xyz_file_or_block) -> str:
     """
     Convert a 3D structure to a canonical SMILES string using Open Babel.
+
+    :param xyz_file_or_block: Path to XYZ file or XYZ format string
+    :return: Canonical SMILES string
+    :raises ImportError: If openbabel package is not installed
     """
     try:
-        from openbabel import pybel
-    except ImportError:
-        logger.error(
-            "Function get_canonical_smiles_ob needs openbabel package, which is not installed."
-        )
-        return
+        pybel = _import_pybel()
+    except ImportError as e:
+        err_msg = "Function get_canonical_smiles_ob needs openbabel package, which is not installed."
+        logger.error(err_msg)
+        raise ImportError(err_msg) from e
+
     if xyz_file_or_block.endswith(".xyz"):
         obmol = next(pybel.readfile("xyz", xyz_file_or_block))
     else:
