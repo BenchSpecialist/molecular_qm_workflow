@@ -29,6 +29,7 @@ class ValidationError(Exception):
 
 class AdditionalProperty(Enum):
     """Supported additional properties."""
+    COMBUSTION_HEAT = "combustion_heat"
     CHELPG_CHARGES = "chelpg_charges"
     FORCES = "forces"
     FREQ = "freq"
@@ -37,9 +38,17 @@ class AdditionalProperty(Enum):
     QUADRUPOLE = "quadrupole"
 
     @classmethod
+    def _default_props(cls) -> set[str]:
+        return {
+            cls.COMBUSTION_HEAT.value, cls.CHELPG_CHARGES.value,
+            cls.FORCES.value
+        }
+
+    @classmethod
     def to_kwargs_mapping(cls) -> dict[str, str]:
         """Get mapping from property names to function parameter names."""
         return {
+            cls.COMBUSTION_HEAT.value: "return_combustion_heat",
             cls.CHELPG_CHARGES.value: "return_chelpg_chg",
             cls.FORCES.value: "return_gradient",
             cls.FREQ.value: "return_freq",
@@ -179,8 +188,9 @@ class PipelineSettings(BaseModel):
         description="Probe depth for ESP calculations in angstrom")
 
     # Property calculation settings
-    additional_properties: list[str] = Field(
-        default=["chelpg_charges", "forces"],
+    additional_properties: set[str] = Field(
+        default=AdditionalProperty._default_props(),
+        max_length=len(SUPPORTED_ADDITIONAL_PROPS),
         description="Additional DFT properties to compute.\n"
         f"# Supported properties: {', '.join(SUPPORTED_ADDITIONAL_PROPS)}\n"
         f"# Total electronic energy, HOMO/LUMO, dipole moment, ESP range are always returned."
@@ -205,7 +215,9 @@ class PipelineSettings(BaseModel):
 
     def get_property_kwargs(self) -> dict[str, bool]:
         """
-        Convert additional_properties list to keyword arguments
+        Convert additional_properties list to keyword arguments of `get_properties_main`
+
+        :return: Dictionary mapping parameter names to boolean values.
         """
         prop_mapping = AdditionalProperty.to_kwargs_mapping()
         return {
