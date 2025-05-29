@@ -234,7 +234,7 @@ def get_properties_main(st: Structure,
 
     # Currently, the total electronic energy is used to approximate the enthalpy
     if return_combustion_heat:
-        st.property['combustion_heat_eV_etot'], _ = calc_combustion_heat(
+        st.property['combustion_heat_eV'], _ = calc_combustion_heat(
             st.smiles, mol_heat=st.property[DFT_ENERGY_KEY])
 
     if return_gradient:
