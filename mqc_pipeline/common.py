@@ -134,9 +134,10 @@ class Structure:
         lines = xyz_block.strip().split('\n')
         elements, xyz = [], []
         for line in lines[2:]:
-            el, x, y, z = line.split()
-            elements.append(el)
-            xyz.append([float(x), float(y), float(z)])
+            parts = line.split()
+            # ignores additional columns beyond the first 4
+            elements.append(parts[0])
+            xyz.append([float(parts[1]), float(parts[2]), float(parts[3])])
 
         return cls(elements=elements, xyz=np.array(xyz))
 

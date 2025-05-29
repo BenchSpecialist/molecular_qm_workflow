@@ -161,9 +161,10 @@ def read_xyz(xyz_path: str, parse_comment=False) -> Structure:
 
     elements, xyz = [], []
     for line in lines[2:]:
-        el, x, y, z = line.split()
-        elements.append(el)
-        xyz.append([float(x), float(y), float(z)])
+        parts = line.split()
+        # ignores additional columns beyond the first 4
+        elements.append(parts[0])
+        xyz.append([float(parts[1]), float(parts[2]), float(parts[3])])
 
     atomic_numbers = [ELEMENT_TO_ATOMIC_NUMBER[el] for el in elements]
     mult = 1 + Structure.get_unpaired_electrons(atomic_numbers, charge=0)

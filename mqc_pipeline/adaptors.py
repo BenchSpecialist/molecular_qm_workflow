@@ -124,12 +124,13 @@ class RDKitMolAdaptor(MoleculeAdaptor):
             raise RuntimeError(
                 "RDKitMolAdaptor: Input RDKit molecule has no conformer and cannot be written to XYZ block."
             )
-        rows = xyz_block.split("\n\n")[-1].splitlines()
+        atom_coords = xyz_block.split("\n\n")[-1].splitlines()
         elements, xyz = [], []
-        for row in rows:
-            el, x, y, z = row.split()
-            elements.append(el)
-            xyz.append([float(x), float(y), float(z)])
+        for line in atom_coords:
+            parts = line.split()
+            # ignores additional columns beyond the first 4
+            elements.append(parts[0])
+            xyz.append([float(parts[1]), float(parts[2]), float(parts[3])])
 
         return Structure(elements=elements,
                          xyz=np.array(xyz),
