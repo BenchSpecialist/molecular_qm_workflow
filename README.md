@@ -27,7 +27,7 @@ The command-line interface [`mqc_runner.py`](https://github.com/Solid-Energy-Sys
 
 The command-line utility has been pre-configured for the `slurm` user on the **Fluidstack cluster**. To get started, test the installation by running:
 ```
-slurm@fs-s-login-001:~$ mqc_runner.py --help
+slurm@fs-s-login-001:/mnt/filesystem$ mqc_runner.py --help
 usage: mqc_runner.py [-h] [--config CONFIG] [--write-default-config WRITE_DEFAULT_CONFIG] [--dry-run]
                      [--combine-results] [--cleanup]
 
@@ -45,14 +45,14 @@ options:
                         accidental deletion of batch results before they are combined into final output files. Use
                         this to clean workspace after successful pipeline completion.
 ```
-
+> **Note:** To submit jobs on the Fluidstack cluster, **your launch directory must be located within `/mnt/filesystem`**. This path is a shared mounted directory accessible by both the login nodes and all compute nodes. In contrast, the home directories of login and compute nodes are isolated. If you submit jobs from your home directory, they will fail silently—no output will be returned, and the jobs will effectively disappear.
 
 #### Step 1: Generate a Default Configuration File
 
 For first-time users, generate a default configuration file with all available options:
 
 ```bash
-slurm@fs-s-login-001:~$ mqc_runner.py --write-default-config config.yaml
+slurm@fs-s-login-001:/mnt/filesystem$ mqc_runner.py --write-default-config config.yaml
 ```
 
 The generated configuration file contains the following structure and default values:
@@ -132,7 +132,7 @@ The minimal requirement to initialize the pipeline is specifying the input file 
 
 Once your configuration file is properly set up, run the pipeline:
 ```bash
-slurm@fs-s-login-001:~$ mqc_runner.py --config config.yaml
+slurm@fs-s-login-001:/mnt/filesystem$ mqc_runner.py --config config.yaml
 ```
 
 ### Output Schema
