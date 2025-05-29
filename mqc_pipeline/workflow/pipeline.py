@@ -8,7 +8,7 @@ from ..settings import PipelineSettings, METHOD_AIMNet2, METHOD_DFT
 from ..common import Structure
 from ..smiles_util import smiles_to_3d_structures_by_rdkit
 from .. import optimize
-from ..property import get_properties_neutral
+from ..property import get_properties_main
 from ..structure_io import write_molecule_property, write_atom_property
 from ..util import logger, setup_logger
 
@@ -86,8 +86,8 @@ def run_one_batch(inputs: list[str] | list[Structure],
     pyscf_options = settings.to_pyscf_options()
     esp_options = settings.to_esp_grids_options()
 
-    # Get property calculation kwargs from settings
-    prop_kwargs = settings.get_property_kwargs()
+    # Get additional property calculation kwargs from settings
+    additional_prop_kwargs = settings.get_property_kwargs()
 
     # Set backend used for geometry optimization
     if settings.geometry_opt_method is None:
@@ -98,13 +98,13 @@ def run_one_batch(inputs: list[str] | list[Structure],
     elif settings.geometry_opt_method.upper() == METHOD_DFT:
         opt_func = partial(optimize.optimize_by_pyscf, options=pyscf_options)
         # DFT-optimized structures already save the gradient info.
-        prop_kwargs.update({'return_gradient': False})
+        additional_prop_kwargs.update({'return_gradient': False})
 
     # Set up property calculator, get all properties
-    prop_func = partial(get_properties_neutral,
+    prop_func = partial(get_properties_main,
                         pyscf_options=pyscf_options,
                         esp_options=esp_options,
-                        **prop_kwargs)
+                        **additional_prop_kwargs)
 
     # Run the pipeline for each molecule sequentially
     out_sts = []

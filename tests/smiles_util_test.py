@@ -9,6 +9,8 @@ from mqc_pipeline.smiles_util import smiles_to_3d_structures_by_rdkit, \
     get_canonical_smiles_rdk, get_canonical_smiles_ob, smiles_has_broken_bonds
 from mqc_pipeline.adaptors import get_adaptor
 
+from .conftest import requires_openbabel
+
 
 def test_smiles_to_3d_structures_by_rdkit():
     # Test with a valid SMILES string
@@ -104,11 +106,7 @@ O         -3.35323        2.59408        0.02215
 can_smiles2 = "[CH2]OC(=O)O[CH]F"
 
 
-@pytest.mark.skipif(
-    platform.system() != "Darwin",
-    reason=
-    "openbabel cannot installed correctly with pyproject.toml, so only run this test locally"
-)
+@requires_openbabel()
 @pytest.mark.parametrize("xyz_block, expected_smiles", [(xyz1, can_smiles1),
                                                         (xyz2, can_smiles2)],
                          ids=['xyz1', 'xyz2'])

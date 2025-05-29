@@ -119,3 +119,26 @@ def test_from_yaml(tmp_cwd):
         'pyscf_functional'].default
     assert config.esp_probe_depth == PipelineSettings.model_fields[
         'esp_probe_depth'].default
+
+
+def test_validate_additional_properties():
+    """Test validation of additional properties."""
+    Path("input.txt").write_text("C\n")
+    user_input = {
+        "input_file_or_dir": "input.txt",
+        "additional_properties": ["chelpg_charges", "forces"]
+    }
+    # Valid additional properties should not raise exceptions
+    PipelineSettings(**user_input)
+
+    # Invalid additional property should raise ValidationError
+    with pytest.raises(ValidationError,
+                       match='Unsupported additional properties') as excinfo:
+        user_input["additional_properties"] = ["forces", "INVALID_PROP"]
+        PipelineSettings(**user_input)
+
+    # Duplicates in the user input are removed
+    props_with_duplicates = ["freq", "forces", "freq"]
+    user_input["additional_properties"] = props_with_duplicates
+    config = PipelineSettings(**user_input)
+    assert config.additional_properties == set(props_with_duplicates)

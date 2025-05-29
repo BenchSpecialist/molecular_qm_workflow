@@ -20,6 +20,7 @@ from ..settings import PySCFOption, ESPGridsOption
 
 from .esp import generate_esp_grids, get_esp_range
 from .volume import get_vdw_volume
+from .combustion_heat import calc_combustion_heat
 from .keys import (DFT_ENERGY_KEY, HOMO_KEY, LUMO_KEY, ESP_MIN_KEY,
                    ESP_MAX_KEY, DIPOLE_X_KEY, DIPOLE_Y_KEY, DIPOLE_Z_KEY,
                    DFT_FORCES_KEY, CHELPG_CHARGE_KEY)
@@ -160,15 +161,16 @@ def get_default_properties(st: Structure, mf, rdm1) -> Structure:
     return st
 
 
-def get_properties_neutral(st: Structure,
-                           pyscf_options: PySCFOption,
-                           esp_options: ESPGridsOption,
-                           return_gradient: bool = False,
-                           return_chelpg_chg: bool = True,
-                           return_freq: bool = False,
-                           return_volume: bool = False,
-                           return_polarizability: bool = False,
-                           return_quadrupole: bool = False) -> Structure:
+def get_properties_main(st: Structure,
+                        pyscf_options: PySCFOption,
+                        esp_options: ESPGridsOption,
+                        return_combustion_heat: bool = True,
+                        return_gradient: bool = False,
+                        return_chelpg_chg: bool = True,
+                        return_freq: bool = False,
+                        return_volume: bool = False,
+                        return_polarizability: bool = False,
+                        return_quadrupole: bool = False) -> Structure:
     """
     Compute properties for the given structure (neutral molecule) using PySCF.
 
@@ -229,6 +231,11 @@ def get_properties_neutral(st: Structure,
         logger.warning(
             "CHELPG charges and ESP calculations are not available without GPU."
         )
+
+    # Currently, the total electronic energy is used to approximate the enthalpy
+    if return_combustion_heat:
+        st.property['combustion_heat_eV'], _ = calc_combustion_heat(
+            st.smiles, mol_heat=st.property[DFT_ENERGY_KEY])
 
     if return_gradient:
         gradients_arr, st.metadata['dft_gradient_duration'] = timeit(

@@ -17,8 +17,8 @@ from ase import Atoms
 import pyscf
 
 COORDINATE_UNIT = 'angstrom'
-_DEFAULT_CHARGE = 0.
-_DEFAULT_MULTIPLICITY = 1.
+_DEFAULT_CHARGE = 0
+_DEFAULT_MULTIPLICITY = 1
 _UNIQUE_KEY_LENGTH = 16
 
 from .constants import HARTREE_TO_EV
@@ -32,7 +32,7 @@ class Structure:
     elements: list[str]
     xyz: np.ndarray  # shape (n_atoms, 3)
     atomic_numbers: Optional[list[int]] = None
-    smiles: str = " "
+    smiles: str = ""
     unique_id: Optional[str] = None
     charge: int = _DEFAULT_CHARGE
     multiplicity: int = _DEFAULT_MULTIPLICITY
@@ -82,6 +82,7 @@ class Structure:
             cv_value, unit = cv_data
             self.property[f'Cv_tot_{unit}'] = float(cv_value)
 
+    @classmethod
     def from_ase_atoms(cls, ase_atoms: Atoms):
         return cls(elements=ase_atoms.get_chemical_symbols(),
                    xyz=ase_atoms.get_positions(),
@@ -108,6 +109,36 @@ class Structure:
             # Note that: mol.spin = 2S = Nalpha - Nbeta = unpaired_electrons (multiplicity=2S+1)
             unit=COORDINATE_UNIT)
         return mol
+
+    def to_xyz_block(self) -> str:
+        """
+        Convert the Structure object to an XYZ formatted string.
+
+        :return: A string in XYZ format representing the structure.
+        """
+        comment_line = f"{self.smiles} unique_id:{self.unique_id} charge:{self.charge} multiplicity:{self.multiplicity}\n"
+
+        xyz_lines = [f"{len(self.elements)}\n", comment_line]
+        for el, (x, y, z) in zip(self.elements, self.xyz):
+            xyz_lines.append(f"{el} {x} {y} {z}\n")
+        return ''.join(xyz_lines)
+
+    @classmethod
+    def from_xyz_block(cls, xyz_block: str):
+        """
+        Create a Structure object from an XYZ formatted string.
+
+        :param xyz_block: A string in XYZ format.
+        :return: A Structure object initialized with the data from the XYZ block.
+        """
+        lines = xyz_block.strip().split('\n')
+        elements, xyz = [], []
+        for line in lines[2:]:
+            el, x, y, z = line.split()
+            elements.append(el)
+            xyz.append([float(x), float(y), float(z)])
+
+        return cls(elements=elements, xyz=np.array(xyz))
 
     @staticmethod
     def get_unpaired_electrons(atom_numbers: list[int], charge: int) -> int:

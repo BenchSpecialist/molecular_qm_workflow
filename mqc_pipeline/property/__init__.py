@@ -1,4 +1,4 @@
-from .property import get_properties_neutral
+from .property import get_properties_main
 from .keys import (
     DFT_ENERGY_KEY,
     HOMO_KEY,
