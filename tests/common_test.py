@@ -22,11 +22,10 @@ def test_Structure():
 
 
 def test_from_xyz_block():
-    xyz_block_extended = """3
+    xyz_block_extended = """1
 
-O      1.223982   -0.063887    0.000000 0.0
-C     -0.001651    0.128033   -0.000000 0.0
-O     -1.222331   -0.064146   -0.000000 0.0
+F      0.000000   0.000000    0.000000 -1
 """
     # Handles extended XYZ blocks with additional columns properly
-    st = Structure.from_xyz_block(xyz_block_extended)
+    st = Structure.from_xyz_block(xyz_block_extended, partial_charge_column=4)
+    st.charge = -1

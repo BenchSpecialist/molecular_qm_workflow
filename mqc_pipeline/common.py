@@ -21,7 +21,7 @@ _DEFAULT_CHARGE = 0
 _DEFAULT_MULTIPLICITY = 1
 _UNIQUE_KEY_LENGTH = 16
 
-from .constants import HARTREE_TO_EV
+from .constants import HARTREE_TO_EV, ELEMENT_TO_ATOMIC_NUMBER
 
 
 @dataclass(slots=True)  # eliminates the __dict__ to reduce memory overhead
@@ -124,32 +124,63 @@ class Structure:
         return ''.join(xyz_lines)
 
     @classmethod
-    def from_xyz_block(cls, xyz_block: str):
+    def from_xyz_block(
+            cls,
+            xyz_block: str,
+            partial_charge_column: int | None = None) -> 'Structure':
         """
         Create a Structure object from an XYZ formatted string.
 
         :param xyz_block: A string in XYZ format.
+        :param partial_charge_column: The column index (0-based) where the partial
+                                      charge is located in an extended XYZ format.
         :return: A Structure object initialized with the data from the XYZ block.
         """
         lines = xyz_block.strip().split('\n')
-        elements, xyz = [], []
-        for line in lines[2:]:
+        elements, xyz, partial_charges = [], [], []
+        for i, line in enumerate(lines[2:]):
             parts = line.split()
-            # ignores additional columns beyond the first 4
             elements.append(parts[0])
             xyz.append([float(parts[1]), float(parts[2]), float(parts[3])])
+
+            if partial_charge_column is None:
+                continue  # Skip charge extraction if not specified
+
+            # Extract partial charge from the specified column
+            if len(parts) > partial_charge_column:
+                charge = float(parts[partial_charge_column])
+                partial_charges.append(charge)
+            else:
+                raise ValueError(
+                    f"Line {i+1} doesn't have enough columns for charge data")
+
+        if partial_charges:
+            # Calculate total molecular charge from partial charges
+            total_charge = round(np.sum(partial_charges))
+            return cls(elements=elements,
+                       xyz=np.array(xyz),
+                       charge=total_charge)
 
         return cls(elements=elements, xyz=np.array(xyz))
 
     @staticmethod
-    def get_unpaired_electrons(atom_numbers: list[int], charge: int) -> int:
+    def get_unpaired_electrons(atom_numbers_or_eles: list[int] | list[str],
+                               charge: int) -> int:
         """
-        Calculate the number of unpaired electrons based on atomic numbers and charge.
+        Calculate the number of unpaired electrons in a molecule based on
+        atomic numbers or element symbols.
 
-        :param atom_numbers: List of atomic numbers for each atom in the molecule
+        :param atom_numbers_or_eles: List of atomic numbers or element symbols.
         :param charge: Total charge of the molecule
         :return: Number of unpaired electrons (0 or 1)
         """
+        if isinstance(atom_numbers_or_eles[0], str):
+            # Convert element symbols to atomic numbers
+            atom_numbers = [
+                ELEMENT_TO_ATOMIC_NUMBER[el] for el in atom_numbers_or_eles
+            ]
+        else:
+            atom_numbers = atom_numbers_or_eles
         # Only the parity matters for unpaired electrons calculation
         # So we can take modulo 2 before summing to avoid overflow
         return (sum(num % 2 for num in atom_numbers) - charge % 2) % 2
