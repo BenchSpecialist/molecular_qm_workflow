@@ -143,8 +143,8 @@ class Structure:
             elements.append(parts[0])
             xyz.append([float(parts[1]), float(parts[2]), float(parts[3])])
 
-            if partial_charge_column is None:
-                continue  # Skip charge extraction if not specified
+            if partial_charge_column is None or len(parts) == 4:
+                continue  # Skip charge extraction if not specified or not present
 
             # Extract partial charge from the specified column
             if len(parts) > partial_charge_column:
