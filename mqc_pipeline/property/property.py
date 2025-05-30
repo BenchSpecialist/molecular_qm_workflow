@@ -233,8 +233,14 @@ def get_properties_main(st: Structure,
 
     # Currently, the total electronic energy is used to approximate the enthalpy
     if return_combustion_heat:
-        st.property['combustion_heat_eV'], _ = calc_combustion_heat(
-            st.smiles, mol_heat=st.property[DFT_ENERGY_KEY])
+        try:
+            st.property['combustion_heat_eV'], _ = calc_combustion_heat(
+                st.smiles, mol_heat=st.property[DFT_ENERGY_KEY])
+        except Exception as e:
+            logger.error(
+                f"{st.smiles} (id={st.unique_id}): Failed to calculate combustion heat: {str(e)}"
+            )
+            st.property['combustion_heat_eV'] = None
 
     if return_gradient:
         gradients_arr, st.metadata['dft_gradient_duration'] = timeit(
@@ -262,9 +268,16 @@ def get_properties_main(st: Structure,
 
     if return_polarizability and st.multiplicity == 1:
         # Backend function only supports closed-shell systems
-        st.property['alpha_iso_au'], st.metadata[
-            'dft_polarizability_duration'] = timeit(
-                get_isotropic_polarizability, mf)
+        try:
+            st.property['alpha_iso_au'], st.metadata[
+                'dft_polarizability_duration'] = timeit(
+                    get_isotropic_polarizability, mf)
+        except Exception as e:
+            logger.error(
+                f"{st.smiles} (id={st.unique_id}): Failed to calculate isotropic polarizability: {str(e)}"
+            )
+            st.property['alpha_iso_au'] = None
+            st.metadata['dft_polarizability_duration'] = None
 
     # PySCF is not expected to change the order of atoms, but we update it just in case
     st.elements = [mol.atom_symbol(i) for i in range(mol.natm)]

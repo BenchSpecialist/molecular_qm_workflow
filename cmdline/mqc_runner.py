@@ -139,7 +139,7 @@ def _combine_csv_files(batch_dirs: list[Path], filename: str) -> None:
         if (batch_dir / filename).exists()
     ]
     if not csv_files:
-        logger.warning(f"No {filename} files found in batch directories")
+        print(f"No {filename} files found in batch directories")
         return
 
     # Read and combine all CSV files
@@ -202,7 +202,6 @@ def main():
         PipelineSettings.write_default_config_to_yaml(
             args.write_default_config)
         msg = f"Default configuration file written to {args.write_default_config}"
-        logger.info(msg)
         print(msg)
         return
 
