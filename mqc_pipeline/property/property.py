@@ -15,9 +15,9 @@ except (ImportError, AttributeError):
     _USE_GPU = False
 
 from ..common import Structure
-from ..constants import HARTREE_TO_EV
 from ..settings import PySCFOption, ESPGridsOption
 
+from .stability import get_homo_lumo_levels
 from .esp import generate_esp_grids, get_esp_range
 from .volume import get_vdw_volume
 from .combustion_heat import calc_combustion_heat
@@ -149,11 +149,8 @@ def get_default_properties(st: Structure, mf, rdm1) -> Structure:
     # Get the total SCF energy
     st.property[DFT_ENERGY_KEY] = float(mf.e_tot)
 
-    # Get HOMO and LUMO energies (neutral species only) in eV.
-    st.property[HOMO_KEY] = float(
-        mf.mo_energy[mf.mo_occ > 0][-1]) * HARTREE_TO_EV
-    st.property[LUMO_KEY] = float(
-        mf.mo_energy[mf.mo_occ == 0][0]) * HARTREE_TO_EV
+    # Get HOMO and LUMO energies in eV.
+    st.property[HOMO_KEY], st.property[LUMO_KEY] = get_homo_lumo_levels(mf)
 
     # Get dipole
     st.property[DIPOLE_X_KEY], st.property[DIPOLE_Y_KEY], st.property[
@@ -244,7 +241,7 @@ def get_properties_main(st: Structure,
 
     if return_freq:
         thermo_info, st.metadata['dft_hessian_duration'] = timeit(
-            get_thermo_info, mf)
+            get_thermo_info, mf, st.unique_id)
         if thermo_info:
             # Save ZPE, E_0K, E_tot, H_tot, G_tot, Cv_tot
             st.save_thermo_info(thermo_info)
