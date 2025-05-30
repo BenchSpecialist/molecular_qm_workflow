@@ -4,7 +4,7 @@ import numpy as np
 from pathlib import Path
 from functools import lru_cache
 
-from ..util import logger, timeit
+from ..util import get_default_logger, timeit
 
 try:
     from gpu4pyscf.dft import rks, uks
@@ -24,6 +24,8 @@ from .combustion_heat import calc_combustion_heat
 from .keys import (DFT_ENERGY_KEY, HOMO_KEY, LUMO_KEY, ESP_MIN_KEY,
                    ESP_MAX_KEY, DIPOLE_X_KEY, DIPOLE_Y_KEY, DIPOLE_Z_KEY,
                    DFT_FORCES_KEY, CHELPG_CHARGE_KEY)
+
+logger = get_default_logger()
 
 
 class NumpyEncoder(json.JSONEncoder):

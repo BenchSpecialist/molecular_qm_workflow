@@ -1,10 +1,18 @@
-import platform
+import subprocess
 import numpy as np
 import pytest
 
 from mqc_pipeline import optimize, Structure
-from mqc_pipeline.property import DFT_ENERGY_KEY, DFT_FORCES_KEY
-from mqc_pipeline.util import has_nvidia_gpu
+from mqc_pipeline.property import DFT_FORCES_KEY
+
+
+def has_nvidia_gpu():
+    try:
+        # Check if 'nvidia-smi' command is available and outputs something
+        result = subprocess.run(["nvidia-smi"], capture_output=True, text=True)
+        return result.returncode == 0 and len(result.stdout) > 0
+    except FileNotFoundError:
+        return False
 
 
 @pytest.mark.slow

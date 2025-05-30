@@ -4,7 +4,9 @@ from typing import Generator
 
 from ..common import Structure
 from ..structure_io import read_xyz
-from ..util import logger
+from ..util import get_default_logger
+
+logger = get_default_logger()
 
 
 def read_smiles(input_file: str) -> list[str]:

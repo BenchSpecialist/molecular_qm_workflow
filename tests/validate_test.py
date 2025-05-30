@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+
 from mqc_pipeline.validate import CSV_COL_NAMES, is_csv_single_column, \
     is_txt_single_column, validate_input, ValidationError
 

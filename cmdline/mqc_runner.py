@@ -29,7 +29,9 @@ from pathlib import Path
 
 from mqc_pipeline.settings import PipelineSettings
 from mqc_pipeline.validate import validate_input
-from mqc_pipeline.util import logger, change_dir
+from mqc_pipeline.util import get_default_logger, change_dir
+
+logger = get_default_logger()
 
 _PYTHON_EXE = "/mnt/filesystem/dev_renkeh/mqc-env/bin/python"
 

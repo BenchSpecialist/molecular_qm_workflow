@@ -10,8 +10,9 @@ from rdkit.Chem.rdMolTransforms import GetBondLength
 
 from .common import Structure, get_unpaired_electrons
 from .adaptors import get_adaptor
-from .util import logger
+from .util import get_default_logger
 
+logger = get_default_logger()
 MAX_ATTEMPTS_EMBED = 100
 
 

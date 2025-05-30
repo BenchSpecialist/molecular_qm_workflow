@@ -10,10 +10,11 @@ from ..smiles_util import smiles_to_3d_structures_by_rdkit
 from .. import optimize
 from ..property import get_properties_main
 from ..structure_io import write_molecule_property, write_atom_property
-from ..util import logger, setup_logger
+from ..util import get_default_logger, setup_logger
 
 from .io import read_smiles, read_xyz_dir
 
+logger = get_default_logger()
 _GPU_ID = os.environ.get("CUDA_VISIBLE_DEVICES") or 0
 
 MOL_PROP_OUTFILE = "molecule_property.{ext}"

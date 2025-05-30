@@ -2,6 +2,7 @@ import pytest
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+
 from mqc_pipeline import structure_io, Structure
 from mqc_pipeline.property import DFT_ENERGY_KEY
 

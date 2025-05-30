@@ -2,27 +2,47 @@ import os
 import sys
 import time
 import logging
-import subprocess
-from loguru import logger
+from loguru import logger as _loguru_logger
 from functools import wraps
 from contextlib import contextmanager
 from typing import Callable, TypeVar, Any, Tuple
 
 T = TypeVar('T')
-# Remove the default loguru handler
-logger.remove()
 
-# Add a new handler that logs to a file, the saves generic information
-logger.add(
-    "mqc_pipeline.log",
-    level="DEBUG",
-    format="{time:YYYY-MM-DD HH:mm:ss} - {level} - {message}",
-    backtrace=False,  # Disable traceback unless needed
-    diagnose=False  # Disable deep inspection of tracebacks
-)
+# Remove the default loguru handler
+_loguru_logger.remove()
+
+# Global variable to track if logger is configured
+_logger_configured = False
+
+
+def get_default_logger(log_file="mqc_pipeline.log") -> Any:
+    global _logger_configured
+
+    if not _logger_configured and log_file:
+        # Add a new handler that logs to a file, the saves generic information
+        _loguru_logger.add(
+            log_file,
+            level="DEBUG",
+            format="{time:YYYY-MM-DD HH:mm:ss} - {level} - {message}",
+            backtrace=False,  # Disable traceback unless needed
+            diagnose=False,  # Disable deep inspection of tracebacks
+        )
+        _logger_configured = True
+
+    return _loguru_logger
 
 
 def setup_logger(name, log_file=None, level=logging.DEBUG, stream=False):
+    """
+    Setup a standard logging.Logger instance.
+
+    :param name: Logger name
+    :param log_file: Optional log file path
+    :param level: Logging level
+    :param stream: Whether to add stream handler
+    :return: Configured logger instance
+    """
     logger = logging.getLogger(name)
     logger.setLevel(level)
 
@@ -39,15 +59,6 @@ def setup_logger(name, log_file=None, level=logging.DEBUG, stream=False):
         logger.addHandler(sh)
 
     return logger
-
-
-def has_nvidia_gpu():
-    try:
-        # Check if 'nvidia-smi' command is available and outputs something
-        result = subprocess.run(["nvidia-smi"], capture_output=True, text=True)
-        return result.returncode == 0 and len(result.stdout) > 0
-    except FileNotFoundError:
-        return False
 
 
 def timeit(func: Callable[..., T], *args: Any,

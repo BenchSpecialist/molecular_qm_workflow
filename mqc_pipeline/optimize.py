@@ -1,7 +1,8 @@
 import time
 
-from .util import logger
+from .util import get_default_logger
 
+logger = get_default_logger()
 # Imports for ASE backend
 from ase.optimize import BFGS, FIRE
 

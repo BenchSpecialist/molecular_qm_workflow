@@ -3,9 +3,9 @@ from pathlib import Path
 from pyscf.tools import molden
 from pyscf.dft import uks
 
-from mqc_pipeline.property import stability
-
 import pytest
+
+from mqc_pipeline.property import stability
 
 
 @pytest.fixture(scope="session")
