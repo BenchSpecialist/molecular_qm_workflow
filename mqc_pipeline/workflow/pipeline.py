@@ -6,7 +6,7 @@ from functools import partial
 
 from ..settings import PipelineSettings, METHOD_AIMNet2, METHOD_DFT
 from ..common import Structure
-from ..smiles_util import smiles_to_3d_structures_by_rdkit
+from ..smiles_util import smiles_to_structure_rdk
 from .. import optimize
 from ..property import get_properties_main
 from ..structure_io import write_molecule_property, write_atom_property
@@ -39,7 +39,7 @@ def run_one_molecule(smiles_or_st: str | Structure,
         smiles = smiles_or_st
         # 3D structure generation from SMILES
         try:
-            st = smiles_to_3d_structures_by_rdkit(smiles)
+            st = smiles_to_structure_rdk(smiles)
         except Exception as e:
             err_msg = f"{smiles}: 3D structure generation failed - {str(e)}"
             _log_failed_inputs(err_msg)

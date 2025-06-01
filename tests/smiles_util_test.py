@@ -4,17 +4,17 @@ import pytest
 from rdkit import Chem
 from pyscf import M
 
-from mqc_pipeline.smiles_util import smiles_to_3d_structures_by_rdkit, \
+from mqc_pipeline.smiles_util import smiles_to_structure_rdk, \
     get_canonical_smiles_rdk, get_canonical_smiles_ob, smiles_has_broken_bonds
 from mqc_pipeline.adaptors import get_adaptor
 
 from .conftest import requires_openbabel
 
 
-def test_smiles_to_3d_structures_by_rdkit():
+def test_smiles_to_structure_rdk():
     # Test with a valid SMILES string
     smiles = "C"
-    st = smiles_to_3d_structures_by_rdkit(smiles)
+    st = smiles_to_structure_rdk(smiles)
     assert st.smiles == smiles
     assert st.elements == ['C', 'H', 'H', 'H', 'H']
     assert st.xyz.shape == (5, 3)
@@ -22,7 +22,7 @@ def test_smiles_to_3d_structures_by_rdkit():
     # Raise error when given an invalid SMILES string
     invalid_smiles = "INVALID_SMILES"
     with pytest.raises(ValueError, match='Invalid SMILES string'):
-        smiles_to_3d_structures_by_rdkit(invalid_smiles)
+        smiles_to_structure_rdk(invalid_smiles)
 
 
 def test_get_canonical_smiles_rdk(tmp_cwd):

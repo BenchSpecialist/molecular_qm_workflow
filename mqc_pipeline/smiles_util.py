@@ -16,9 +16,9 @@ logger = get_default_logger()
 MAX_ATTEMPTS_EMBED = 100
 
 
-def smiles_to_3d_structures_by_rdkit(smiles: str,
-                                     max_attempts: float = MAX_ATTEMPTS_EMBED
-                                     ) -> Structure:
+def smiles_to_structure_rdk(smiles: str,
+                            max_attempts: float = MAX_ATTEMPTS_EMBED
+                            ) -> Structure:
     """
     Convert a SMILES string to a 3D structure using RDKit.
 
