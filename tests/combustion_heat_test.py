@@ -4,6 +4,7 @@ import pytest
 from mqc_pipeline.property.combustion_heat import calc_combustion_heat
 from mqc_pipeline.constants import HARTREE_TO_EV
 from mqc_pipeline.common import Structure
+from mqc_pipeline.smiles_util import smiles_to_3d_structures_by_rdkit
 
 from .conftest import requires_openbabel
 
@@ -69,3 +70,20 @@ H           1.54581        0.30417        0.27394
     combustion_heat, reaction = calc_combustion_heat(st, mol_heat=e_tot)
     assert np.isclose(combustion_heat, ref_heat, atol=1e-06)
     assert reaction == '1.00 * CO + 1.50 * O2 -> 2.00 * H2O + 1.00 * CO2'
+
+
+def test_unsupported_elements():
+    """
+    Test that unsupported elements raise a ValueError.
+    """
+    smiles = "C[Si](C)(C)O[Al](O[Si](C)(C)C)O[Si](C)(C)C"
+    with pytest.raises(
+            ValueError,
+            match='Unsupported element Al for combustion heat calculation.'):
+        calc_combustion_heat(smiles, mol_heat=0)
+
+    st = smiles_to_3d_structures_by_rdkit(smiles)
+    with pytest.raises(
+            ValueError,
+            match='Unsupported element Al for combustion heat calculation.'):
+        calc_combustion_heat(st, mol_heat=0)

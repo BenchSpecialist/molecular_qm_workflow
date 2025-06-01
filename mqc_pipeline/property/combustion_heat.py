@@ -63,7 +63,13 @@ def calc_combustion_heat(smiles_or_st: str | Structure,
 
         # Count elements
         for atom in mol.GetAtoms():
-            ele_count[atom.GetSymbol()] += 1
+            element = atom.GetSymbol()
+            if element in ele_count:
+                ele_count[element] += 1
+            else:
+                raise ValueError(
+                    f'Unsupported element {element} for combustion heat calculation.'
+                )
 
     if isinstance(smiles_or_st, Structure):
         st = smiles_or_st
