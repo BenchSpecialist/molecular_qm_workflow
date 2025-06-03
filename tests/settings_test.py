@@ -8,6 +8,14 @@ from mqc_pipeline.settings import (PipelineSettings, ASEOption, PySCFOption,
                                    ValidationError)
 
 
+def test_PySCFOption():
+    pyscf_option = PySCFOption.default_with_solvent()
+    assert pyscf_option.basis == "6311g*"
+    assert pyscf_option.dft_functional == "b3lypg"
+    assert pyscf_option.solvent_method == 'IEF-PCM'
+    assert pyscf_option.solvent_eps == 18.5
+
+
 def test_minimal_initialization(tmp_cwd):
     inp_name = "smiles.txt"
     # Create the input file to pass the input validation
@@ -76,6 +84,8 @@ def test_to_ase_options():
 def test_to_pyscf_options():
     """Test conversion to PySCFOption object."""
     Path("input.txt").write_text("C\n")
+
+    # Test basic settings without solvent (pyscf_solvent=False)
     user_input = {
         "input_file_or_dir": "input.txt",
         "pyscf_basis": "cc-pvdz",
@@ -88,6 +98,24 @@ def test_to_pyscf_options():
     assert isinstance(pyscf_options, PySCFOption)
     assert pyscf_options.basis == "cc-pvdz"
     assert pyscf_options.dft_functional == "r2scan"
+    assert pyscf_options.solvent_method is None
+    assert pyscf_options.solvent_eps is None
+
+    # Test with default solvent settings (pyscf_solvent=True)
+    user_input["pyscf_solvent"] = True
+    config = PipelineSettings(**user_input)
+    pyscf_options = config.to_pyscf_options()
+
+    assert pyscf_options.solvent_method == "IEF-PCM"
+    assert pyscf_options.solvent_eps == 18.5
+
+    # Test with custom solvent settings (tuple)
+    user_input["pyscf_solvent"] = ("COSMO", 78.36)
+    config = PipelineSettings(**user_input)
+    pyscf_options = config.to_pyscf_options()
+
+    assert pyscf_options.solvent_method == "COSMO"
+    assert pyscf_options.solvent_eps == 78.36
 
 
 def test_from_yaml(tmp_cwd):

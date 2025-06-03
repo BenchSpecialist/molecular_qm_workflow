@@ -19,6 +19,8 @@ _DEFAULT_FUNCTIONAL = 'b3lypg'
 _DEFAULT_SCF_MAX_CYCLE = 100  # default: 50 in pyscf
 _DEFAULT_SCF_CONV_TOL = 1e-09  # default: 1e-09 in pyscf
 _DEFAULT_GRIDS_LEVEL = 3  # default: 3 in pyscf
+_DEFAULT_SOLVENT_METHOD = 'IEF-PCM'
+_DEFAULT_SOLVENT_EPS = 18.5
 
 SUPPORTED_COLUMNAR_FILE_FORMATS = ('csv', 'parquet')
 
@@ -82,20 +84,32 @@ class PySCFOption:
     """
     Configuration options for PySCF backend.
 
-    :param dft_functional: DFT functional to use.
     :param basis: Basis set to use.
+    :param dft_functional: DFT functional to use.
     :param max_scf_cycle: Maximum number of SCF iterations allowed.
     :param scf_conv_tol: SCF convergence tolerance.
     :param grids_level: Level of grid refinement for numerical integration used
                         in DFT to evaluate the exchange-correlation energy and
                         potential. This setting is DFT-relevant, and not used for
                         wavefunction-based methods like Hartree-Fock, MP2 or CCSD.
+    :param solvent_method: Solvent model to use (e.g., 'IEF-PCM').
+    :param solvent_eps: Dielectric constant of the solvent (e.g., 78.36 for water).
     """
     basis: str = _DEFAULT_BASIS
     dft_functional: str = _DEFAULT_FUNCTIONAL
     max_scf_cycle: int = _DEFAULT_SCF_MAX_CYCLE
     scf_conv_tol: float = _DEFAULT_SCF_CONV_TOL
     grids_level: int = _DEFAULT_GRIDS_LEVEL
+    solvent_method: str = None
+    solvent_eps: float = None
+
+    @classmethod
+    def default_with_solvent(cls) -> 'PySCFOption':
+        """
+        Create a default PySCFOption with solvent settings.
+        """
+        return cls(solvent_method=_DEFAULT_SOLVENT_METHOD,
+                   solvent_eps=_DEFAULT_SOLVENT_EPS)
 
 
 @dataclass(slots=True)
@@ -172,10 +186,14 @@ class PipelineSettings(BaseModel):
     pyscf_grids_level: int = Field(
         default=_DEFAULT_GRIDS_LEVEL,
         description="Level of grid refinement for numerical integration")
-    # TODO: need to evaluate if this option is needed, if so, create separate module
-    # for conformer sampling
-    pyscf_save_fock: bool = Field(
-        default=False, description="Whether to save the Fock matrix")
+
+    pyscf_solvent: bool | tuple[str, float] = Field(
+        default=False,
+        description="Whether to use solvent effects in PySCF calculations.\n"
+        f"# If True, uses default {_DEFAULT_SOLVENT_METHOD} with epsilon={_DEFAULT_SOLVENT_EPS}.\n"
+        "# If tuple[str, float], the first element is the solvent method (e.g., 'IEF-PCM')\n"
+        "# and the second element is the solvent dielectric constant (e.g., 18.5)."
+    )
 
     ## Settings for ESP grid generation
     esp_solvent_accessible_region: float = Field(
@@ -243,11 +261,19 @@ class PipelineSettings(BaseModel):
 
         :return: A PySCFOption object with settings from this configuration.
         """
+        # Determine solvent settings based on pyscf_solvent value
+        solvent_method, solvent_eps = (
+            (_DEFAULT_SOLVENT_METHOD,
+             _DEFAULT_SOLVENT_EPS) if self.pyscf_solvent is True else
+            self.pyscf_solvent if isinstance(self.pyscf_solvent, tuple) else
+            (None, None))
         return PySCFOption(basis=self.pyscf_basis,
                            dft_functional=self.pyscf_functional,
                            max_scf_cycle=self.pyscf_max_scf_cycle,
                            scf_conv_tol=self.pyscf_scf_conv_tol,
-                           grids_level=self.pyscf_grids_level)
+                           grids_level=self.pyscf_grids_level,
+                           solvent_method=solvent_method,
+                           solvent_eps=solvent_eps)
 
     def to_esp_grids_options(self) -> ESPGridsOption:
         """
@@ -378,3 +404,29 @@ class PipelineSettings(BaseModel):
                 f"Supported properties are: {', '.join(SUPPORTED_ADDITIONAL_PROPS)}"
             )
         return properties
+
+    @field_validator('pyscf_solvent')
+    def validate_pyscf_solvent(
+            cls, value: bool | tuple[str, float]) -> bool | tuple[str, float]:
+        """
+        Validate the pyscf_solvent field.
+        """
+        if isinstance(value, bool):
+            return value
+
+        if isinstance(value, (tuple, list)) and len(value) == 2:
+            method, eps = value
+            if not isinstance(method, str):
+                raise ValidationError(
+                    f"Solvent method must be a string, got {type(method).__name__}: {method}"
+                )
+            if not isinstance(eps, (int, float)) or eps <= 0:
+                raise ValidationError(
+                    f"Solvent dielectric constant must be a positive number, got: {eps}"
+                )
+            # Convert to tuple if it's a list
+            return (method, float(eps))
+
+        raise ValidationError(
+            f"pyscf_solvent must be either a boolean or a tuple of (method: str, epsilon: float), "
+            f"got {type(value).__name__}: {value}")

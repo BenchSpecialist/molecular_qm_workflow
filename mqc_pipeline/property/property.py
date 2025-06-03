@@ -12,7 +12,7 @@ try:
 except (ImportError, AttributeError):
     _USE_GPU = False
 
-from ..common import Structure
+from ..common import Structure, setup_mean_field_obj
 from ..settings import PySCFOption, ESPGridsOption
 from ..import_util import import_rks_uks
 
@@ -191,14 +191,7 @@ def get_properties_main(st: Structure,
     mol = st.to_pyscf_mole(basis=pyscf_options.basis)
 
     # Setup Kohn-Sham DFT object
-    if st.multiplicity == 1:  # closed-shell
-        mf = rks.RKS(mol, xc=pyscf_options.dft_functional).density_fit()
-    else:
-        mf = uks.UKS(mol, xc=pyscf_options.dft_functional).density_fit()
-
-    mf.max_cycle = pyscf_options.max_scf_cycle
-    mf.conv_tol = pyscf_options.scf_conv_tol
-    mf.grids.level = pyscf_options.grids_level
+    mf = setup_mean_field_obj(mol, pyscf_options)
 
     # Run SCF calculation
     mf.kernel()

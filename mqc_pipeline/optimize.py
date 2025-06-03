@@ -13,7 +13,7 @@ from ase.optimize import BFGS, FIRE
 # Imports for pyscf backend
 from pyscf.geomopt import geometric_solver
 
-from .common import Structure, COORDINATE_UNIT
+from .common import Structure, setup_mean_field_obj, COORDINATE_UNIT
 from .constants import EV_TO_HARTREE
 from .property import DFT_ENERGY_KEY, DFT_FORCES_KEY
 from .settings import ASEOption, PySCFOption, METHOD_AIMNet2
@@ -149,14 +149,7 @@ def optimize_by_pyscf(st: Structure,
     mol = st.to_pyscf_mole(basis=options.basis)
 
     # Setup Kohn-Sham DFT object
-    if st.multiplicity == 1:  # closed-shell
-        mf = rks.RKS(mol, xc=options.dft_functional).density_fit()
-    else:
-        mf = uks.UKS(mol, xc=options.dft_functional).density_fit()
-
-    mf.max_cycle = options.max_scf_cycle
-    mf.conv_tol = options.scf_conv_tol
-    mf.grids.level = options.grids_level
+    mf = setup_mean_field_obj(mol, options)
 
     # Save energies and gradients along the optimization trajectory
     energies, gradients = [], []

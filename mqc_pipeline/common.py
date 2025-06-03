@@ -22,6 +22,8 @@ _DEFAULT_MULTIPLICITY = 1
 _UNIQUE_KEY_LENGTH = 16
 
 from .constants import HARTREE_TO_EV, ELEMENT_TO_ATOMIC_NUMBER
+from .import_util import import_rks_uks
+from .settings import PySCFOption
 
 
 @dataclass(slots=True)  # eliminates the __dict__ to reduce memory overhead
@@ -226,3 +228,30 @@ def get_unpaired_electrons(rdk_mol) -> int:
     :return: The number of unpaired electrons in the molecule.
     """
     return sum(atom.GetNumRadicalElectrons() for atom in rdk_mol.GetAtoms())
+
+
+def setup_mean_field_obj(mol, options: PySCFOption):
+    """
+    Setup a PySCF mean-field object for Kohn-Sham DFT calculations.
+
+    :param mol: `pyscf.gto.mole.Mole` object representing the molecule.
+    :param options: PySCFOption object containing settings for the calculation.
+
+    :return: A PySCF mean-field object (RKS or UKS) configured with the provided options.
+    """
+    rks, uks = import_rks_uks()
+
+    if mol.spin == 0:  # closed-shell
+        mf = rks.RKS(mol, xc=options.dft_functional).density_fit()
+    else:
+        mf = uks.UKS(mol, xc=options.dft_functional).density_fit()
+
+    mf.max_cycle = options.max_scf_cycle
+    mf.conv_tol = options.scf_conv_tol
+    mf.grids.level = options.grids_level
+    if solvent_method := options.solvent_method:
+        mf = mf.PCM()
+        mf.with_solvent.method = solvent_method
+        mf.with_solvent.eps = options.solvent_eps
+
+    return mf
