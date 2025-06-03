@@ -4,7 +4,7 @@ import pytest
 from mqc_pipeline.property.combustion_heat import calc_combustion_heat
 from mqc_pipeline.constants import HARTREE_TO_EV
 from mqc_pipeline.common import Structure
-from mqc_pipeline.smiles_util import smiles_to_3d_structures_by_rdkit
+from mqc_pipeline.smiles_util import smiles_to_structure_rdk
 
 from .conftest import requires_openbabel
 
@@ -82,7 +82,7 @@ def test_unsupported_elements():
             match='Unsupported element Al for combustion heat calculation.'):
         calc_combustion_heat(smiles, mol_heat=0)
 
-    st = smiles_to_3d_structures_by_rdkit(smiles)
+    st = smiles_to_structure_rdk(smiles)
     with pytest.raises(
             ValueError,
             match='Unsupported element Al for combustion heat calculation.'):
