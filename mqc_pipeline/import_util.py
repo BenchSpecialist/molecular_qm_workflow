@@ -38,7 +38,6 @@ def import_cupy() -> tuple[ModuleType | None, bool]:
     """
     try:
         import cupy
-        _ = cupy.cuda.runtime.getDeviceCount()
         return cupy, True
     except (ImportError, AttributeError):
         # cupy not installed or not configured correctly
