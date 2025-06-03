@@ -116,7 +116,7 @@ def optimize_by_aimnet2(st: Structure, options: ASEOption) -> Structure:
         )
 
     # Save optimization time to metadata
-    st.metadata['aimnet2_opt_time'] = time.perf_counter() - t_start
+    st.metadata['aimnet2_opt_time'] = round(time.perf_counter() - t_start, 4)
 
     # Update the input structure with the optimized geometry
     st.xyz = ase_atoms.get_positions()
@@ -195,7 +195,7 @@ def optimize_by_pyscf(st: Structure,
         maxsteps=500,  # default:100
     )
     # Save optimization time to metadata
-    st.metadata['dft_opt_duration'] = time.perf_counter() - t_start
+    st.metadata['dft_opt_time'] = round(time.perf_counter() - t_start, 4)
     if save_metadata:
         st.metadata['dft_opt_energies'] = energies
         st.metadata['dft_opt_gradients'] = gradients

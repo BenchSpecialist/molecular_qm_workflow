@@ -30,6 +30,7 @@ class ValidationError(Exception):
 class AdditionalProperty(Enum):
     """Supported additional properties."""
     COMBUSTION_HEAT = "combustion_heat"
+    ESP_RANGE = "esp_range"
     CHELPG_CHARGES = "chelpg_charges"
     FORCES = "forces"
     FREQ = "freq"
@@ -38,10 +39,10 @@ class AdditionalProperty(Enum):
     QUADRUPOLE = "quadrupole"
 
     @classmethod
-    def _default_props(cls) -> set[str]:
+    def _default_props_solvent(cls) -> set[str]:
         return {
             cls.COMBUSTION_HEAT.value, cls.CHELPG_CHARGES.value,
-            cls.FORCES.value
+            cls.ESP_RANGE.value
         }
 
     @classmethod
@@ -49,6 +50,7 @@ class AdditionalProperty(Enum):
         """Get mapping from property names to function parameter names."""
         return {
             cls.COMBUSTION_HEAT.value: "return_combustion_heat",
+            cls.ESP_RANGE.value: "return_esp_range",
             cls.CHELPG_CHARGES.value: "return_chelpg_chg",
             cls.FORCES.value: "return_gradient",
             cls.FREQ.value: "return_freq",
@@ -189,11 +191,11 @@ class PipelineSettings(BaseModel):
 
     # Property calculation settings
     additional_properties: set[str] = Field(
-        default=AdditionalProperty._default_props(),
+        default=AdditionalProperty._default_props_solvent(),
         max_length=len(SUPPORTED_ADDITIONAL_PROPS),
         description="Additional DFT properties to compute.\n"
         f"# Supported properties: {', '.join(SUPPORTED_ADDITIONAL_PROPS)}\n"
-        f"# Total electronic energy, HOMO/LUMO, dipole moment, ESP range are always returned."
+        f"# Total electronic energy, HOMO/LUMO, dipole moment are always returned."
     )
 
     # Output settings

@@ -186,18 +186,20 @@ By default this file contains:
 | Column | Description |
 |--------|-------------|
 | **`unique_id`** | Molecule identifier (matches other output files) |
-| **`dft_opt_duration`** | Time spent on DFT geometry optimization |
-| **`dft_prop_duration`** | Total time spent on DFT property calculations |
-| **`total_duration`** | Total computation time for the molecule |
+| **`dft_opt_time`** | Time spent on DFT geometry optimization |
+| **`dft_prop_total_time`** | Total time spent on DFT property calculations |
+| **`total_time`** | Total computation time for the molecule |
 
 For some computationally expensive additional properties, detailed timing breakdown is provided:
 
 | Column | Description |
 |--------|-------------|
-| **`dft_gradient_duration`** | Time spent on DFT gradient calculation |
-| **`dft_hessian_duration`** | Time spent on DFT Hessian and thermochemistry calculations |
-| **`dft_vdw_volume_duration`** | Time spent on van der Waals volume estimation |
-| **`dft_polarizability_duration`** | Time spent on polarizability tensor calculation |
+| **`dft_esp_time`**| Time spent on electrostatic potential calculation |
+| **`dft_chelpg_time`**| Time spent on CHELPG charge calculation |
+| **`dft_gradient_time`** | Time spent on DFT gradient calculation |
+| **`dft_hessian_time`** | Time spent on DFT Hessian and thermochemistry calculations |
+| **`dft_vdw_volume_time`** | Time spent on van der Waals volume estimation |
+| **`dft_polarizability_time`** | Time spent on polarizability tensor calculation |
 
 > **Note:** These columns are only populated when the corresponding calculations are performed based on the `additional_properties` configuration setting.
 

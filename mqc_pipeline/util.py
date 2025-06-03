@@ -64,17 +64,19 @@ def setup_logger(name, log_file=None, level=logging.DEBUG, stream=False):
 def timeit(func: Callable[..., T], *args: Any,
            **kwargs: Any) -> Tuple[T, float]:
     """
-    Execute a function and return both its result and execution time.
+    Execute a function and return both its result and execution time in seconds
+    rounding to 4 decimal places.
 
     :param func: Function to execute
     :param args: Positional arguments for the function
     :param kwargs: Keyword arguments for the function
+
     :return: Tuple of (function_result, execution_time_in_seconds)
     """
     start_time = time.perf_counter()
     result = func(*args, **kwargs)
     duration = time.perf_counter() - start_time
-    return result, duration
+    return result, round(duration, 4)
 
 
 def timer(func):

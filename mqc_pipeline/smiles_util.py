@@ -86,7 +86,7 @@ def smiles_to_structure_rdk(smiles: str,
         xyz[i] = [pos.x, pos.y, pos.z]
 
     metadata = {
-        "rdkit_duration": time.perf_counter() - t_start,
+        "rdkit_time": round(time.perf_counter() - t_start, 4),
         "rdkit_attempts": attempt + 1,
     }
 

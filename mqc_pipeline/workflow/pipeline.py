@@ -73,7 +73,7 @@ def run_one_molecule(smiles_or_st: str | Structure,
     logger.info(
         f"{st.smiles} (id={st.unique_id}): Property calculations done.")
 
-    st.metadata['total_duration'] = time.perf_counter() - t_start
+    st.metadata['total_time'] = round(time.perf_counter() - t_start, 4)
     return st
 
 

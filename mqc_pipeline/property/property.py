@@ -163,6 +163,7 @@ def get_default_properties(st: Structure, mf, rdm1) -> Structure:
 def get_properties_main(st: Structure,
                         pyscf_options: PySCFOption,
                         esp_options: ESPGridsOption,
+                        return_esp_range: bool = True,
                         return_combustion_heat: bool = True,
                         return_gradient: bool = False,
                         return_chelpg_chg: bool = True,
@@ -211,25 +212,31 @@ def get_properties_main(st: Structure,
     st = get_default_properties(st, mf, rdm1)
 
     # ESP and CHELPG charges calculations can only run on GPUs
-    if _USE_GPU:
-        # Generate grids for ESP calculations
-        grids = generate_esp_grids(mol,
-                                   rcut=esp_options.solvent_accessible_region,
-                                   space=esp_options.grid_spacing,
-                                   solvent_probe=esp_options.probe_depth)
-        st.property[ESP_MIN_KEY], st.property[ESP_MAX_KEY] = get_esp_range(
-            mol, grids, one_rdm=rdm1)
+    if return_esp_range:
+        if _USE_GPU:
+            # Generate grids for ESP calculations
+            grids = generate_esp_grids(
+                mol,
+                rcut=esp_options.solvent_accessible_region,
+                space=esp_options.grid_spacing,
+                solvent_probe=esp_options.probe_depth)
+            esp_range, st.metadata['dft_esp_time'] = timeit(
+                get_esp_range, mol=mol, grids=grids, one_rdm=rdm1) # yapf:disable
+            st.property[ESP_MIN_KEY], st.property[ESP_MAX_KEY] = esp_range
+        else:
+            logger.warning(
+                "Electrostatic potential calculations are GPU-only.")
 
-        if return_chelpg_chg:
+    if return_chelpg_chg:
+        if _USE_GPU:
             # Evaluate CHELPG charges and transfers data from GPU (cupy) to CPU (numpy)
             # CHELPG method fits atomic charges to reproduce ESP at a number of points
             # around the molecule.
-            st.atom_property[CHELPG_CHARGE_KEY] = chelpg.eval_chelpg_layer_gpu(
-                mf).get()
-    else:
-        logger.warning(
-            "CHELPG charges and ESP calculations are not available without GPU."
-        )
+            st.atom_property[CHELPG_CHARGE_KEY], st.metadata[
+                'dft_chelpg_time'] = timeit(
+                    lambda mf: chelpg.eval_chelpg_layer_gpu(mf).get(), mf=mf)
+        else:
+            logger.warning("CHELPG charges calculations are GPU-only.")
 
     # Currently, the total electronic energy is used to approximate the enthalpy
     if return_combustion_heat:
@@ -243,13 +250,13 @@ def get_properties_main(st: Structure,
             st.property['combustion_heat_eV'] = None
 
     if return_gradient:
-        gradients_arr, st.metadata['dft_gradient_duration'] = timeit(
-            mf.Gradients().kernel)
+        gradients_arr, st.metadata['dft_gradient_time'] = timeit(
+            lambda mf: mf.Gradients().kernel(), mf=mf)
         st.save_gradients(gradients_arr, prop_key=DFT_FORCES_KEY)
 
     if return_freq:
-        thermo_info, st.metadata['dft_hessian_duration'] = timeit(
-            get_thermo_info, mf, st.unique_id)
+        thermo_info, st.metadata['dft_hessian_time'] = timeit(
+            get_thermo_info, mf_obj=mf, unique_id=st.unique_id)
         if thermo_info:
             # Save ZPE, E_0K, E_tot, H_tot, G_tot, Cv_tot
             st.save_thermo_info(thermo_info)
@@ -260,28 +267,26 @@ def get_properties_main(st: Structure,
 
     if return_volume:
         st.property['vdw_volume_angstrom3'], st.metadata[
-            'dft_vdw_volume_duration'] = timeit(
-                get_vdw_volume,
-                coords_angstrom=mol.atom_coords(),
-                atomic_numbers=mol.atom_charges(),
-                use_gpu=_USE_GPU)
+            'dft_vdw_volume_time'] = timeit(get_vdw_volume,
+                                            coords_angstrom=mol.atom_coords(),
+                                            atomic_numbers=mol.atom_charges(),
+                                            use_gpu=_USE_GPU)
 
     if return_polarizability and st.multiplicity == 1:
         # Backend function only supports closed-shell systems
         try:
             st.property['alpha_iso_au'], st.metadata[
-                'dft_polarizability_duration'] = timeit(
+                'dft_polarizability_time'] = timeit(
                     get_isotropic_polarizability, mf)
         except Exception as e:
             logger.error(
                 f"{st.smiles} (id={st.unique_id}): Failed to calculate isotropic polarizability: {str(e)}"
             )
-            st.property['alpha_iso_au'] = None
-            st.metadata['dft_polarizability_duration'] = None
 
     # PySCF is not expected to change the order of atoms, but we update it just in case
     st.elements = [mol.atom_symbol(i) for i in range(mol.natm)]
     st.atomic_numbers = [mol.atom_charge(i) for i in range(mol.natm)]
 
-    st.metadata['dft_prop_duration'] = time.perf_counter() - t_start
+    st.metadata['dft_prop_total_time'] = round(time.perf_counter() - t_start,
+                                               4)
     return st
