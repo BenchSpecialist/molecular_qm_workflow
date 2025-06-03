@@ -262,18 +262,21 @@ def main():
             batch_smiles = smiles_list[start_idx:start_idx + batch_size]
             start_idx += batch_size
 
-            # Save batch data to disk
-            batch_dir = output_dir / f"batch_{batch_id}"
-            batch_dir.mkdir(parents=True, exist_ok=True)
-            batch_file = batch_dir / f"input_smiles.pkl"
+            # Determine output directory: use output_dir directly for single job
+            if settings.num_jobs == 1:
+                batch_dir = output_dir
+            else:
+                batch_dir = output_dir / f"batch_{batch_id}"
+                batch_dir.mkdir(parents=True, exist_ok=True)
+                with open(batch_dir / f"batch_{batch_id}_smiles.txt",
+                          'w') as fh:
+                    fh.write("\n".join(batch_smiles))
+
+            batch_file = batch_dir / "input_smiles.pkl"
             with open(batch_file, 'wb') as fh:
                 pickle.dump(batch_smiles, fh)
 
-            # Write batch info to human-readable format for debugging
-            with open(batch_dir / f"_input_smiles.txt", 'w') as fh:
-                fh.write("\n".join(batch_smiles))
-
-            # make outputs generated in the batch dir
+            # Make outputs generated in the batch_dir
             with change_dir(batch_dir):
                 # Submit SLURM job for this batch
                 job_id = _submit_one_slurm_job(
@@ -298,22 +301,25 @@ def main():
         # Create structure batches from `read_xyz_dir` generator
         st_generator = read_xyz_dir(input_path)
         for batch_id, batch_size in enumerate(batch_sizes):
-
             batch_sts = [next(st_generator) for _ in range(batch_size)]
 
-            # Save batch data using pickle
-            batch_dir = output_dir / f"batch_{batch_id}"
-            batch_dir.mkdir(parents=True, exist_ok=True)
-            batch_file = batch_dir / f"input_sts.pkl"
+            # Determine output directory: use output_dir directly for single job
+            if settings.num_jobs == 1:
+                batch_dir = output_dir
+            else:
+                batch_dir = output_dir / f"batch_{batch_id}"
+                batch_dir.mkdir(parents=True, exist_ok=True)
+
+            batch_file = batch_dir / "input_sts.pkl"
+            # Serialize Structure objects in the current batch using pickle
             with open(batch_file, 'wb') as fh:
                 pickle.dump(batch_sts, fh)
-
-            # Write batch info to human-readable format
-            with open(batch_dir / f"_input_xyz.txt", 'w') as fh:
+            # Write batch info to human-readable format for debugging
+            with open(batch_dir / "_input_xyz_paths.txt", 'w') as fh:
                 fh.write("\n".join(
                     [st.metadata.get('from_xyz_file') for st in batch_sts]))
 
-            # make outputs generated in the batch dir
+            # Make outputs generated in the batch dir
             with change_dir(batch_dir):
                 # Submit SLURM job for this batch
                 job_id = _submit_one_slurm_job(
