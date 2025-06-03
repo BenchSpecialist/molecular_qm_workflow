@@ -106,9 +106,10 @@ def _parse_args():
         action="store_true",
         help="Remove temporary files after combining results. "
         "Deletes batch directories, SLURM scripts/logs, and cached config. "
-        "Can only be used with --combine-results to prevent accidental deletion "
-        "of batch results before they are combined into final output files. "
-        "Use this to clean workspace after successful pipeline completion.")
+        "Use this to clean workspace after successful pipeline completion. "
+        "Batch directories are only removed when this flag is used with --combine-results "
+        "to prevent accidental deletion of batch results before they are combined into final output files."
+    )
 
     return parser.parse_args()
 
@@ -159,11 +160,25 @@ def main():
     """
     args = _parse_args()
 
-    if args.cleanup and not args.combine_results:
-        raise SystemExit(
-            "Error: --cleanup can only be used with --combine-results flag "
-            "to prevent accidental deletion of batch results before combining."
-        )
+    if args.cleanup:
+        output_dir = Path(os.environ.get("MQC_OUTPUT_DIR",
+                                         Path.cwd())).resolve()
+        # Cleanup SLURM scripts/logs, and cached config
+        for pkl_file in output_dir.glob("*.pkl"):
+            pkl_file.unlink(missing_ok=True)
+            print(f"Removed {pkl_file}")
+        dirs_to_remove = [
+            d for d in (output_dir / _SLURM_SH_DIR, output_dir / _SLURM_LOG_DIR)
+            if d.exists()
+        ] # yapf:disable
+        for dir in dirs_to_remove:
+            try:
+                shutil.rmtree(dir)
+                print(f"Removed {dir}")
+            except OSError as e:
+                print(f"Failed to remove {dir}: {str(e)}")
+        if not args.combine_results:
+            return
 
     if args.combine_results:
         output_dir = Path(os.environ.get("MQC_OUTPUT_DIR",
@@ -181,13 +196,7 @@ def main():
                 _combine_csv_files(batch_dirs, outfile)
 
         if args.cleanup:
-            Path(output_dir / _CACHED_CONFIG).unlink(missing_ok=True)
-            _dirs_to_remove = [
-                d for d in (output_dir / _SLURM_SH_DIR,
-                            output_dir / _SLURM_LOG_DIR) if d.exists()
-            ]
-            _dirs_to_remove.extend(batch_dirs)
-            for dir in _dirs_to_remove:
+            for dir in batch_dirs:
                 try:
                     shutil.rmtree(dir)
                     print(f"Removed {dir}")
@@ -309,15 +318,16 @@ def main():
             else:
                 batch_dir = output_dir / f"batch_{batch_id}"
                 batch_dir.mkdir(parents=True, exist_ok=True)
+                # Write batch info to human-readable format for debugging
+                with open(batch_dir / "_input_xyz_paths.txt", 'w') as fh:
+                    fh.write("\n".join([
+                        st.metadata.get('from_xyz_file') for st in batch_sts
+                    ]))
 
             batch_file = batch_dir / "input_sts.pkl"
             # Serialize Structure objects in the current batch using pickle
             with open(batch_file, 'wb') as fh:
                 pickle.dump(batch_sts, fh)
-            # Write batch info to human-readable format for debugging
-            with open(batch_dir / "_input_xyz_paths.txt", 'w') as fh:
-                fh.write("\n".join(
-                    [st.metadata.get('from_xyz_file') for st in batch_sts]))
 
             # Make outputs generated in the batch dir
             with change_dir(batch_dir):

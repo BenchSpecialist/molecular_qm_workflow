@@ -36,7 +36,7 @@ def _get_aimnet2calc_local_pt():
     Load the local AIMNet2 model checkpoint once and cache it for subsequent calls.
     """
     try:
-        from aimnet2calc import AIMNet2Calculator
+        from aimnet2calc.calculator import AIMNet2Calculator
     except Exception as e:
         err_msg = f"Cannot import aimnet2calc.AIMNet2Calculator: {str(e)}"
         logger.error(err_msg)
@@ -50,7 +50,7 @@ def _get_aimnet2calc_local_pt():
 def _import_aimnet2ase():
     """Import and return AIMNet2ASE with caching."""
     try:
-        from aimnet2calc import AIMNet2ASE
+        from aimnet2calc.aimnet2ase import AIMNet2ASE
         return AIMNet2ASE
     except Exception as e:
         err_msg = f"Cannot import aimnet2calc.AIMNet2ASE: {str(e)}"
