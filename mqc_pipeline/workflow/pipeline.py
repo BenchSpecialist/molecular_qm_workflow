@@ -85,7 +85,6 @@ def run_one_batch(inputs: list[str] | list[Structure],
     """
     progress_logger = setup_logger("progress_logger", log_file=f"PROGRESS.log")
     pyscf_options = settings.to_pyscf_options()
-    esp_options = settings.to_esp_grids_options()
 
     # Get additional property calculation kwargs from settings
     additional_prop_kwargs = settings.get_property_kwargs()
@@ -95,7 +94,7 @@ def run_one_batch(inputs: list[str] | list[Structure],
         opt_func = None
     elif settings.geometry_opt_method.upper() == METHOD_AIMNet2:
         opt_func = partial(optimize.optimize_by_aimnet2,
-                           options=settings.to_ase_options)
+                           options=settings.to_ase_options())
     elif settings.geometry_opt_method.upper() == METHOD_DFT:
         opt_func = partial(optimize.optimize_by_pyscf, options=pyscf_options)
         # DFT-optimized structures already save the gradient info.
@@ -104,7 +103,7 @@ def run_one_batch(inputs: list[str] | list[Structure],
     # Set up property calculator, get all properties
     prop_func = partial(get_properties_main,
                         pyscf_options=pyscf_options,
-                        esp_options=esp_options,
+                        esp_options=settings.to_esp_grids_options(),
                         **additional_prop_kwargs)
 
     # Run the pipeline for each molecule sequentially
@@ -129,6 +128,9 @@ def run_one_batch(inputs: list[str] | list[Structure],
 
     ext = settings.output_file_format.lower()
 
+    if len(out_sts) == 0:
+        logger.warning("No successful structures processed. Exiting.")
+        return
     # Write molecule-level properties to a file
     mol_prop_out = MOL_PROP_OUTFILE.format(ext=ext)
     write_molecule_property(out_sts, mol_prop_out)

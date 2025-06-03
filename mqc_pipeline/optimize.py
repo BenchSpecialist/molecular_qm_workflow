@@ -1,4 +1,7 @@
+import os
 import time
+from pathlib import Path
+from functools import lru_cache
 
 from .util import get_default_logger
 
@@ -22,6 +25,46 @@ from .settings import ASEOption, PySCFOption, METHOD_AIMNet2
 
 OPTIMIZER_NAME_TO_CLASS = {'BFGS': BFGS, 'FIRE': FIRE}
 
+_AIMNET2_MODEL_PATH = Path(
+    "/mnt/filesystem/dev_renkeh/aimnet-model-zoo/aimnet2"
+) / "aimnet2_wb97m_0.jpt"
+
+
+@lru_cache(maxsize=1)
+def _get_aimnet2calc_local_pt():
+    """
+    Load the local AIMNet2 model checkpoint once and cache it for subsequent calls.
+    """
+    try:
+        from aimnet2calc import AIMNet2Calculator
+    except Exception as e:
+        err_msg = f"Cannot import aimnet2calc.AIMNet2Calculator: {str(e)}"
+        logger.error(err_msg)
+        raise ImportError(err_msg)
+
+    logger.info(f'Loading AIMNet2 model from {_AIMNET2_MODEL_PATH}')
+    return AIMNet2Calculator(str(_AIMNET2_MODEL_PATH))
+
+
+@lru_cache(maxsize=1)
+def _import_aimnet2ase():
+    """Import and return AIMNet2ASE with caching."""
+    try:
+        from aimnet2calc import AIMNet2ASE
+        return AIMNet2ASE
+    except Exception as e:
+        err_msg = f"Cannot import aimnet2calc.AIMNet2ASE: {str(e)}"
+        logger.error(err_msg)
+        raise ImportError(err_msg)
+
+
+def _runs_with_slurm() -> bool:
+    """
+    Check if the current Python process is running under SLURM orchestration.
+    """
+    slurm_vars = ['SLURM_JOB_ID', 'SLURM_PROCID', 'SLURM_LOCALID']
+    return any(var in os.environ for var in slurm_vars)
+
 
 def optimize_by_aimnet2(st: Structure, options: ASEOption) -> Structure:
     """
@@ -31,26 +74,35 @@ def optimize_by_aimnet2(st: Structure, options: ASEOption) -> Structure:
     :param st: Structure object containing the molecule information.
     :param options: ASEOption object containing optimization parameters.
     """
-    try:
-        from aimnet2calc import AIMNet2ASE
-    except (ImportError, OSError):
-        err_msg = (
-            "AIMNet2 calculator is not available or not set up correctly. "
-            "Please install the required package.")
-        logger.error(err_msg)
-        raise ImportError(err_msg)
+    from requests.exceptions import HTTPError
 
-    # Attach AIMNet2 calculator to the molecule
+    AIMNet2ASE = _import_aimnet2ase()
+
+    t_start = time.perf_counter()
     ase_atoms = st.to_ase_atoms()
-    ase_atoms.calc = AIMNet2ASE(base_calc=METHOD_AIMNet2,
-                                charge=st.charge,
-                                mult=st.multiplicity)
+
+    # Use local model when running under SLURM to avoid network issues
+    if _runs_with_slurm():
+        ase_atoms.calc = AIMNet2ASE(base_calc=_get_aimnet2calc_local_pt(),
+                                    charge=st.charge,
+                                    mult=st.multiplicity)
+    else:
+        # Try online model first, fallback to local if it fails
+        try:
+            ase_atoms.calc = AIMNet2ASE(base_calc=METHOD_AIMNet2,
+                                        charge=st.charge,
+                                        mult=st.multiplicity)
+        except (HTTPError, Exception) as e:
+            logger.warning(f"Failed to load remote AIMNet2 model: {str(e)}")
+            ase_atoms.calc = AIMNet2ASE(base_calc=_get_aimnet2calc_local_pt(),
+                                        charge=st.charge,
+                                        mult=st.multiplicity)
 
     # Set algorithm/optimizer used for geometry optimization
     if options.optimizer_name not in OPTIMIZER_NAME_TO_CLASS:
         raise ValueError(
             f"Optimizer {options.optimizer_name} is not supported. "
-            f"Supported optimizers are: {list(OPTIMIZER_NAME_TO_CLASS.keys())}"
+            f"Supported optimizers are: {', '.join(OPTIMIZER_NAME_TO_CLASS.keys())}"
         )
     optimizer = OPTIMIZER_NAME_TO_CLASS[options.optimizer_name](ase_atoms)
 
@@ -63,6 +115,9 @@ def optimize_by_aimnet2(st: Structure, options: ASEOption) -> Structure:
             f"Optimization did not converge for molecule {st.unique_id} with SMILES {st.smiles}"
         )
 
+    # Save optimization time to metadata
+    st.metadata['aimnet2_opt_time'] = time.perf_counter() - t_start
+
     # Update the input structure with the optimized geometry
     st.xyz = ase_atoms.get_positions()
 
@@ -71,8 +126,10 @@ def optimize_by_aimnet2(st: Structure, options: ASEOption) -> Structure:
         ase_atoms.get_potential_energy()) * EV_TO_HARTREE
     st.save_gradients(ase_atoms.get_forces(),
                       prop_key=f"{METHOD_AIMNet2}_forces")
-    st.atom_property[f"{METHOD_AIMNet2}_charges"] = ase_atoms.calc.results.get(
-        'charges', None)
+
+    charges = ase_atoms.calc.results.get('charges')
+    if charges is not None:
+        st.atom_property[f"{METHOD_AIMNet2}_charges"] = charges
 
     st.atomic_numbers = ase_atoms.get_atomic_numbers().tolist()
 
@@ -84,8 +141,7 @@ def _is_gpu4pyscf_compatible() -> bool:
     Detect if cupy is installed (GPU4PySCF requires cupy) and if a CUDA-compatible
     GPU is available.
 
-    Returns:
-        bool: True if a GPU is available, False otherwise.
+    :return: True if a GPU is available, False otherwise
     """
     try:
         import cupy
@@ -105,11 +161,11 @@ def optimize_by_pyscf(st: Structure,
     """
     Optimize the geometry of a molecule using PySCF backend.
 
-    :param st: Structure object containing the molecule information.
-    :param options: PySCFOption object with relevant parameters to set up PySCF.
-
+    :param st: Structure object containing the molecule information
+    :param options: PySCFOption object with relevant parameters to set up PySCF
+    :param save_metadata: Whether to save optimization trajectory metadata
     :return: Structure object with optimized geometry; the energy and forces of
-             the equilibrium geometry are saved in the `property` attribute.
+             the equilibrium geometry are saved in the `property` attribute
     """
     # Setup molecule
     mol = st.to_pyscf_mole(basis=options.basis)
