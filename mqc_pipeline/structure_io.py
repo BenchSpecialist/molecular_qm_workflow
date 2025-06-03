@@ -5,7 +5,7 @@ import re
 import json
 import pickle
 import numpy as np
-import pandas as pd
+import polars
 import pyarrow as pa
 import pyarrow.parquet as pq
 from pathlib import Path
@@ -223,9 +223,7 @@ def read_xyz(xyz_path: str, parse_comment=False) -> Structure:
                          metadata={'from_xyz_file': str(xyz_path)})
 
 
-def write_molecule_property(st_or_sts: StructureType,
-                            filename: str,
-                            save_metadata=True):
+def write_molecule_property(st_or_sts: StructureType, filename: str):
     """
     Write the molecule-level properties structure properties of one or multiple
     Structure objects to a CSV or Parquet file.
@@ -233,34 +231,30 @@ def write_molecule_property(st_or_sts: StructureType,
     if not filename.endswith(COLUMNAR_FILE_EXTENSIONS):
         raise ValueError("Unsupported file format. Use .csv or .parquet")
 
-    if isinstance(st_or_sts, Structure):
-        sts = [st_or_sts]
-    else:
-        sts = st_or_sts
+    sts = [st_or_sts] if isinstance(st_or_sts, Structure) else st_or_sts
 
     # One dict per structure
-    data = []
     _mol_keys = [*SHARED_KEYS, 'multiplicity', 'charge']
-    for st in sts:
-        row = {key: getattr(st, key) for key in _mol_keys}
-        row.update(st.property)
-        data.append(row)
-    df = pd.DataFrame(data)
+    data = [
+        {**{key: getattr(st, key) for key in _mol_keys}, **st.property}
+        for st in sts
+    ] # yapf:disable
 
     if filename.endswith('.csv'):
-        df.to_csv(filename, index=False)
+        df = polars.DataFrame(data)
+        df.write_csv(filename)
 
     if filename.endswith(('.parquet', '.parq')):
-        # Convert to PyArrow Table
-        table = pa.Table.from_pandas(df)
+        # Use PyArrow for Parquet
+        table = pa.Table.from_pylist(data)
         pq.write_table(table, filename)
 
-    if save_metadata:
-        mettadata_list = [st.metadata for st in sts]
-        index = [getattr(st, "unique_id") for st in sts]
-        metadata_df = pd.DataFrame(mettadata_list, index=index)
-        metadata_df.index.name = "unique_id"
-        metadata_df.to_csv('metadata.csv', index=True)
+    metadata_data = [
+        {'unique_id': getattr(st, "unique_id"), **st.metadata}
+        for st in sts
+    ] # yapf:disable
+    metadata_df = polars.DataFrame(metadata_data)
+    metadata_df.write_csv('metadata.csv')
 
 
 def write_atom_property(st_or_sts: StructureType,
@@ -269,16 +263,13 @@ def write_atom_property(st_or_sts: StructureType,
     """
     Write out the atom-level structure properties to a CSV or Parquet file.
     """
-
     if not filename.endswith(COLUMNAR_FILE_EXTENSIONS):
         raise ValueError("Unsupported file format. Use .csv or .parquet")
 
-    if isinstance(st_or_sts, Structure):
-        sts = [st_or_sts]
-    else:
-        sts = st_or_sts
+    sts = [st_or_sts] if isinstance(st_or_sts, Structure) else st_or_sts
 
-    st_dfs = []
+    # One DataFrame per structure
+    all_dfs = []
     for st in sts:
         data = {
             # Add shared keys: unique_id, smiles
@@ -292,16 +283,17 @@ def write_atom_property(st_or_sts: StructureType,
             'z': st.xyz[:, 2],
         })
         data.update(st.atom_property)
-        st_dfs.append(pd.DataFrame(data))
+        all_dfs.append(polars.DataFrame(data))
 
-    df = pd.concat(st_dfs, ignore_index=True)
+    # Concatenate all DataFrames
+    combined_df = polars.concat(all_dfs)
 
     if filename.endswith('.csv'):
-        df.to_csv(filename, index=False)
+        combined_df.write_csv(filename)
 
     if filename.endswith(('.parquet', '.parq')):
         # Convert to PyArrow Table
-        table = pa.Table.from_pandas(df)
+        table = combined_df.to_arrow()
         if parq_metadata:
             # Add metadata if given
             table = table.replace_schema_metadata(parq_metadata)

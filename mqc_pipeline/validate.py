@@ -1,4 +1,4 @@
-import pandas as pd
+import polars
 from pathlib import Path
 from rdkit import Chem
 
@@ -21,13 +21,15 @@ def is_csv_single_column(csv_path: PathLike, first_n_rows: int = 5) -> bool:
         csv_path).suffix == ".csv", "This function expects a .csv file path."
     try:
         # Read the header and the first few rows
-        df = pd.read_csv(csv_path, nrows=first_n_rows, comment='#')
-        columns = df.columns.tolist()
+        df = polars.read_csv(csv_path, n_rows=first_n_rows, comment_prefix='#')
+        columns = df.columns
         # Check if there's only one column and the column name is supported
         if len(columns) != 1 or columns[0] not in CSV_COL_NAMES:
             return False
-        # Ensure all rows in the first column are non-empty
-        return bool(df.iloc[:, 0].notna().all())
+        # Check if all rows in the first column are non-empty strings
+        col_data = df.select(df.columns[0]).to_series()
+        return col_data.is_not_null().all() and (col_data.str.len_chars()
+                                                 > 0).all()
     except Exception as e:
         print(f"Error reading file: {e}")
         return False

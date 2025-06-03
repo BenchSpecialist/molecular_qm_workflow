@@ -24,7 +24,7 @@ import pprint
 import pickle
 import argparse
 import subprocess
-import pandas as pd
+import polars
 from pathlib import Path
 
 from mqc_pipeline.settings import PipelineSettings
@@ -143,12 +143,12 @@ def _combine_csv_files(batch_dirs: list[Path], filename: str) -> None:
         return
 
     # Read and combine all CSV files
-    dataframes = [pd.read_csv(csv_file) for csv_file in csv_files]
-    combined_df = pd.concat(dataframes, ignore_index=True)
+    dataframes = [polars.read_csv(csv_file) for csv_file in csv_files]
+    combined_df = polars.concat(dataframes)
 
     # Write combined df to a new CSV file in the parent directory
     output_file = batch_dirs[0].parent / filename
-    combined_df.to_csv(output_file, index=False)
+    combined_df.write_csv(output_file)
 
     print(f"Combined {len(csv_files)} {filename} files into {output_file}")
 

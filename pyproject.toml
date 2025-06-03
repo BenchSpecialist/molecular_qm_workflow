@@ -32,8 +32,6 @@ cpu_test = [
     "pytest>=7.0.0",
     "numpy >= 1.20.0",
     "scipy>=1.6.0",
-    "pandas>=2.2.3",
-    "pyarrow",
     'pydantic >= 1.10',
     'PyYAML >= 6.0',
     'h5py >= 3.0',
@@ -42,6 +40,9 @@ cpu_test = [
     'pyscf > 2.5.0',
     'geometric', # for geometry optimization
     "loguru", # for logging
+    # "pandas>=2.2.3",
+    "pyarrow",
+    "polars >= 0.20.0", # for data processing
 ]
 dev = [
     "pytest>=7.0.0",

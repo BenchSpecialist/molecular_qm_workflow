@@ -1,4 +1,4 @@
-import pandas as pd
+import polars
 from pathlib import Path
 from typing import Generator
 
@@ -15,10 +15,10 @@ def read_smiles(input_file: str) -> list[str]:
     """
     input_file = Path(input_file)
     if input_file.suffix == '.csv':
-        df = pd.read_csv(input_file)
+        df = polars.read_csv(input_file)
         if 'smiles' not in df.columns:
             raise ValueError("CSV file must contain a 'smiles' column.")
-        smiles_list = df['smiles'].tolist()
+        smiles_list = df['smiles'].to_list()
     elif input_file.suffix == '.txt':
         smiles_list = [
             line.strip() for line in input_file.read_text().splitlines()

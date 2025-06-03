@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-import pandas as pd
+import polars
 import pyarrow.parquet as pq
 
 from mqc_pipeline import structure_io, Structure
@@ -75,7 +75,7 @@ def test_write_molecule_property(methane_st, n2_st):
     csv_file = "mol.csv"
     # Test writing molecule-level properties finishes without error
     structure_io.write_molecule_property(sts, csv_file)
-    data = pd.read_csv(csv_file)
+    data = polars.read_csv(csv_file)
     # Contains 2 rows (one for each molecule)
     assert data.shape[0] == len(sts)
 
@@ -94,8 +94,7 @@ def test_write_atom_property(methane_st, n2_st):
 
     # Test writing atom-level properties finishes without error
     structure_io.write_atom_property(sts, csv_file)
-    data = pd.read_csv(csv_file)
-    print(data)
+    data = polars.read_csv(csv_file)
     assert data.shape[0] == num_rows
 
     pq_file = "atom.parquet"
