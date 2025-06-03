@@ -22,7 +22,7 @@ def read_smiles(input_file: str) -> list[str]:
     elif input_file.suffix == '.txt':
         smiles_list = [
             line.strip() for line in input_file.read_text().splitlines()
-            if line.strip()
+            if line.strip() and not line.startswith('#')
         ]
     else:
         raise ValueError(
