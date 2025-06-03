@@ -7,15 +7,14 @@ from functools import lru_cache
 from ..util import get_default_logger, timeit
 
 try:
-    from gpu4pyscf.dft import rks, uks
     from gpu4pyscf.qmmm import chelpg
     _USE_GPU = True
 except (ImportError, AttributeError):
-    from pyscf.dft import rks, uks
     _USE_GPU = False
 
 from ..common import Structure
 from ..settings import PySCFOption, ESPGridsOption
+from ..import_util import import_rks_uks
 
 from .stability import get_homo_lumo_levels
 from .esp import generate_esp_grids, get_esp_range
@@ -186,6 +185,7 @@ def get_properties_main(st: Structure,
 
     :return: Structure object with populated `property` attribute.
     """
+    rks, uks = import_rks_uks()
     t_start = time.perf_counter()
 
     mol = st.to_pyscf_mole(basis=pyscf_options.basis)

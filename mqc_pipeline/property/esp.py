@@ -2,12 +2,7 @@ import numpy as np
 from functools import lru_cache
 
 from ..constants import ANGSTROM_TO_BOHR, HARTREE_TO_EV, VDW_RADII_ANGSTROM
-
-try:
-    import cupy
-    _CUPY_AVAILABLE = True
-except (ImportError, AttributeError) as e:
-    _CUPY_AVAILABLE = False
+from ..import_util import import_cupy
 
 # If the absolute value of the ESP for closed-shell systems is greater than this
 # threshold, the ESP calculation is considered to be unreliable.
@@ -178,6 +173,7 @@ def get_esp_range(mol, grids: np.ndarray,
 
     :return: Minimum and maximum ESP values across all grid points in eV unit.
     """
+    cupy, _CUPY_AVAILABLE = import_cupy()
     if not _CUPY_AVAILABLE:
         raise RuntimeError(
             "get_esp_range: Required CuPy package not available.")

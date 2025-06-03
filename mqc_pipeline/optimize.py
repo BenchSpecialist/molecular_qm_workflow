@@ -4,6 +4,7 @@ from pathlib import Path
 from functools import lru_cache
 
 from .util import get_default_logger
+from .import_util import import_rks_uks
 
 logger = get_default_logger()
 # Imports for ASE backend
@@ -11,12 +12,6 @@ from ase.optimize import BFGS, FIRE
 
 # Imports for pyscf backend
 from pyscf.geomopt import geometric_solver
-try:
-    # check if GPU4PySCF is available
-    from gpu4pyscf.dft import rks, uks
-    logger.info("Using GPU-accelerated PySCF.")
-except (ImportError, AttributeError):
-    from pyscf.dft import rks, uks
 
 from .common import Structure, COORDINATE_UNIT
 from .constants import EV_TO_HARTREE
@@ -136,25 +131,6 @@ def optimize_by_aimnet2(st: Structure, options: ASEOption) -> Structure:
     return st
 
 
-def _is_gpu4pyscf_compatible() -> bool:
-    """
-    Detect if cupy is installed (GPU4PySCF requires cupy) and if a CUDA-compatible
-    GPU is available.
-
-    :return: True if a GPU is available, False otherwise
-    """
-    try:
-        import cupy
-        _ = cupy.cuda.runtime.getDeviceCount()
-        return True
-    except (ImportError, AttributeError):
-        # cupy not installed or not configured correctly
-        return False
-    except Exception:
-        # Any other error indicates no GPU access
-        return False
-
-
 def optimize_by_pyscf(st: Structure,
                       options: PySCFOption,
                       save_metadata: bool = False) -> Structure:
@@ -167,6 +143,8 @@ def optimize_by_pyscf(st: Structure,
     :return: Structure object with optimized geometry; the energy and forces of
              the equilibrium geometry are saved in the `property` attribute
     """
+    rks, uks = import_rks_uks()
+
     # Setup molecule
     mol = st.to_pyscf_mole(basis=options.basis)
 

@@ -1,17 +1,15 @@
 import numpy as np
 
 from ..constants import VDW_RADII_ANGSTROM
+from ..import_util import import_cupy
 from .esp import generate_esp_grids
 
-_GPU4PYSCF_AVAILABLE, _CUPY_AVAILABLE = True, True
-try:
-    import cupy
-except (ImportError, AttributeError) as e:
-    _CUPY_AVAILABLE = False
+cupy, _CUPY_AVAILABLE = import_cupy()
 
 try:
     from gpu4pyscf.gto.int3c1e import int1e_grids
     from gpu4pyscf.dft import numint
+    _GPU4PYSCF_AVAILABLE = True
 except (ImportError, AttributeError) as e:
     _GPU4PYSCF_AVAILABLE = False
 
