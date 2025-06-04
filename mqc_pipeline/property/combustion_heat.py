@@ -1,10 +1,15 @@
+import polars
 import numpy as np
+from pathlib import Path
 from dataclasses import dataclass, field
 from rdkit import Chem
 
 from ..constants import HARTREE_TO_EV
 from ..common import Structure
 from ..smiles_util import get_canonical_smiles_ob
+
+_COMBUSTION_CSV = Path(__file__).parent / "ElementCombustionData.csv"
+_COMBUSTION_DF = polars.read_csv(_COMBUSTION_CSV)
 
 
 @dataclass(frozen=True)
@@ -13,46 +18,55 @@ class ElementCombustionData:
     product: str
     o2_consumption: float
     product_ratio: float
-    product_heat_hartree: float
-    product_heat_ev: float = field(init=False)
+    product_e_tot_hartree: float
+    product_H_tot_298K_ev: float = np.nan
+    product_e_tot_ev: float = field(init=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, 'product_heat_ev',
-                           self.product_heat_hartree * HARTREE_TO_EV)
+        object.__setattr__(self, 'product_e_tot_ev',
+                           self.product_e_tot_hartree * HARTREE_TO_EV)
+
+    @classmethod
+    def from_dict(cls,
+                  data_dict: dict,
+                  dft_level: str = 'b3lypg_6311g*') -> 'ElementCombustionData':
+        # Extract required fields from dictionary
+        return cls(
+            product=data_dict['product'],
+            o2_consumption=data_dict['o2_consumption'],
+            product_ratio=data_dict['product_ratio'],
+            product_e_tot_hartree=data_dict[f'{dft_level}_e_tot_hartree'],
+            product_H_tot_298K_ev=data_dict.get(f'{dft_level}_H_tot_298K_ev',
+                                                np.nan))
 
 
 ELEMENT_DATA = {
-    'H': ElementCombustionData('H2O', 0.5, 0.5, -76.43394949999472),
-    'Li': ElementCombustionData('Li2O', 0.5, 0.5, np.nan),
-    'Be': ElementCombustionData('BeO', 1, 1, np.nan),
-    'B': ElementCombustionData('B2O3', 1.5, 0.5, -275.6203936495455),
-    'C': ElementCombustionData('CO2', 2, 1, -275.6203936495455),
-    'N': ElementCombustionData('N2', 0, 0.5, -109.555929820176),
-    'O': ElementCombustionData('O2', -1, 0, -150.3026282483459),
-    'F': ElementCombustionData('HF', 0, 1, -100.45856381466965),
-    'Na': ElementCombustionData('Na2O', 0.5, 1, np.nan),
-    'Si': ElementCombustionData('SiO2', 2, 1, -440.0005335019524),
-    # e_total of P2O5 is obtained by dividing e_total of P4O10 by 2
-    'P': ElementCombustionData('P2O5', 2.5, 0.5, -1059.1269704500623),
-    'S': ElementCombustionData('SO2', 2, 1, -548.6559640248399),
-    'Cl': ElementCombustionData('HCl', 0, 1, -460.8261007532856),
-    'K': ElementCombustionData('K2O', 0.5, 1, np.nan),
-    'Br': ElementCombustionData('HBr', 0, 1, -2574.7474248325434),
-    'I': ElementCombustionData('HI', 0, 1, -6920.127908312316)
+    row["element"]: ElementCombustionData.from_dict(row)
+    for row in _COMBUSTION_DF.iter_rows(named=True)
 }
 
 
-def calc_combustion_heat(smiles_or_st: str | Structure,
-                         mol_heat: float = 0) -> tuple[float, str]:
+def calc_combustion_heat(
+        smiles_or_st: str | Structure,
+        mol_heat: float = 0,
+        dft_level: str = 'b3lypg_6311g*') -> tuple[float, str]:
     """
     Calculate the heat of combustion for a molecule given its SMILES string or
     a Structure object and DFT energy.
 
     :param smiles_or_st: SMILES string of the molecule or a Structure object
     :param mol_heat: Energy of the molecule from DFT in eV
+    :param dft_level: String indicating the DFT level of theory used for the calculation;
+                      format: f'{functional}_{basis_set}' where basis_set string has no '-'.
     :return: A tuple containing the heat of combustion in eV and the reaction string
     """
-    ele_count = {key: 0 for key in ELEMENT_DATA.keys()}
+    if not (keys :=
+            [key for key in _COMBUSTION_DF.columns if dft_level in key]):
+        raise NotImplementedError(
+            f'Combustion heat calculation for DFT level "{dft_level}" is not available.'
+        )
+
+    ele_count = {ele: 0 for ele in _COMBUSTION_DF['element'].to_list()}
     if isinstance(smiles_or_st, str):
         smiles = smiles_or_st
         if (mol := Chem.MolFromSmiles(smiles)) is None:
@@ -106,13 +120,13 @@ def calc_combustion_heat(smiles_or_st: str | Structure,
     # Calculate heat of products using the pre-converted ev field
     product_heat_sum = sum(
         count * ELEMENT_DATA[element].product_ratio *
-        ELEMENT_DATA[element].product_heat_ev
+        ELEMENT_DATA[element].product_e_tot_ev
         for element, count in ele_count.items()
-        if not np.isnan(ELEMENT_DATA[element].product_heat_ev))
+        if not np.isnan(ELEMENT_DATA[element].product_e_tot_ev))
 
     # Calculate heat of reactants
     reactant_heat_sum = mol_heat + (total_oxy_consump /
-                                    2.0) * ELEMENT_DATA['O'].product_heat_ev
+                                    2.0) * ELEMENT_DATA['O'].product_e_tot_ev
     combustion_heat = product_heat_sum - reactant_heat_sum
 
     # Build reaction string

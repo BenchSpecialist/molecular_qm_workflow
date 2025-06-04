@@ -75,8 +75,7 @@ class Structure:
         """
         _e_keys = ('ZPE', 'E_0K', 'E_tot', 'H_tot', 'G_tot')
         self.property.update({
-            f'{key.lower()}_eV':
-            float(value[0] * HARTREE_TO_EV)
+            f'{key}_eV': float(value[0] * HARTREE_TO_EV)
             for key in _e_keys if (value := thermo_info.get(key)) is not None
         })
 

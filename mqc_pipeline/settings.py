@@ -2,7 +2,7 @@ import yaml
 from enum import Enum
 from pathlib import Path
 from typing import Literal
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 ### Module constants ###
@@ -94,6 +94,7 @@ class PySCFOption:
                         wavefunction-based methods like Hartree-Fock, MP2 or CCSD.
     :param solvent_method: Solvent model to use (e.g., 'IEF-PCM').
     :param solvent_eps: Dielectric constant of the solvent (e.g., 78.36 for water).
+    :param _dft_level_str: Internal representation of the DFT level as a string.
     """
     basis: str = _DEFAULT_BASIS
     dft_functional: str = _DEFAULT_FUNCTIONAL
@@ -102,6 +103,13 @@ class PySCFOption:
     grids_level: int = _DEFAULT_GRIDS_LEVEL
     solvent_method: str = None
     solvent_eps: float = None
+    _dft_level_str: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        # b3lypg_6311g*
+        dft_level_str = f"{self.dft_functional.lower()}_{self.basis.lower()}".replace(
+            '-', '')
+        object.__setattr__(self, '_dft_level_str', dft_level_str)
 
     @classmethod
     def default_with_solvent(cls) -> 'PySCFOption':
