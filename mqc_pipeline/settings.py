@@ -21,6 +21,8 @@ _DEFAULT_SCF_CONV_TOL = 1e-09  # default: 1e-09 in pyscf
 _DEFAULT_GRIDS_LEVEL = 3  # default: 3 in pyscf
 _DEFAULT_SOLVENT_METHOD = 'IEF-PCM'
 _DEFAULT_SOLVENT_EPS = 18.5
+# Grimme's D3 dispersion correction with Becke-Johnson damping
+_DEFAULT_DISPERSION = 'd3bj'
 
 SUPPORTED_COLUMNAR_FILE_FORMATS = ('csv', 'parquet')
 
@@ -85,7 +87,7 @@ class PySCFOption:
     Configuration options for PySCF backend.
 
     :param basis: Basis set to use.
-    :param dft_functional: DFT functional to use.
+    :param dft_functional: exchange-correlation functional to use.
     :param max_scf_cycle: Maximum number of SCF iterations allowed.
     :param scf_conv_tol: SCF convergence tolerance.
     :param grids_level: Level of grid refinement for numerical integration used
@@ -103,6 +105,7 @@ class PySCFOption:
     grids_level: int = _DEFAULT_GRIDS_LEVEL
     solvent_method: str = None
     solvent_eps: float = None
+    dispersion: str | None = None  # e.g., 'd3bj'
     _dft_level_str: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -112,12 +115,13 @@ class PySCFOption:
         object.__setattr__(self, '_dft_level_str', dft_level_str)
 
     @classmethod
-    def default_with_solvent(cls) -> 'PySCFOption':
+    def get_default_anion_setting(cls) -> 'PySCFOption':
         """
         Create a default PySCFOption with solvent settings.
         """
         return cls(solvent_method=_DEFAULT_SOLVENT_METHOD,
-                   solvent_eps=_DEFAULT_SOLVENT_EPS)
+                   solvent_eps=_DEFAULT_SOLVENT_EPS,
+                   dispersion=_DEFAULT_DISPERSION)
 
 
 @dataclass(slots=True)
@@ -195,12 +199,18 @@ class PipelineSettings(BaseModel):
         default=_DEFAULT_GRIDS_LEVEL,
         description="Level of grid refinement for numerical integration")
 
+    # PySCF settings mainly for anions
     pyscf_solvent: bool | tuple[str, float] = Field(
         default=False,
         description="Whether to use solvent effects in PySCF calculations.\n"
         f"# If True, uses default {_DEFAULT_SOLVENT_METHOD} with epsilon={_DEFAULT_SOLVENT_EPS}.\n"
         "# If tuple[str, float], the first element is the solvent method (e.g., 'IEF-PCM')\n"
         "# and the second element is the solvent dielectric constant (e.g., 18.5)."
+    )
+    pyscf_dispersion: str | None = Field(
+        default=None,
+        description="Dispersion correction method for PySCF calculations.\n"
+        "# Example: 'd3bj' (Grimme's D3 dispersion with Becke-Johnson damping), 'd3zero', 'd4'."
     )
 
     ## Settings for ESP grid generation
@@ -280,6 +290,7 @@ class PipelineSettings(BaseModel):
                            max_scf_cycle=self.pyscf_max_scf_cycle,
                            scf_conv_tol=self.pyscf_scf_conv_tol,
                            grids_level=self.pyscf_grids_level,
+                           dispersion=self.pyscf_dispersion,
                            solvent_method=solvent_method,
                            solvent_eps=solvent_eps)
 

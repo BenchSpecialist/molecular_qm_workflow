@@ -9,11 +9,12 @@ from mqc_pipeline.settings import (PipelineSettings, ASEOption, PySCFOption,
 
 
 def test_PySCFOption():
-    pyscf_option = PySCFOption.default_with_solvent()
+    pyscf_option = PySCFOption.get_default_anion_setting()
     assert pyscf_option.basis == "6311g*"
     assert pyscf_option.dft_functional == "b3lypg"
     assert pyscf_option.solvent_method == 'IEF-PCM'
     assert pyscf_option.solvent_eps == 18.5
+    assert pyscf_option.dispersion == 'd3bj'
 
 
 def test_minimal_initialization(tmp_cwd):
@@ -46,7 +47,7 @@ def test_validate_input_file_or_dir(tmp_cwd):
     PipelineSettings(input_file_or_dir=xyz_dir)
 
 
-def test_validate_ase_optimizer():
+def test_validate_ase_optimizer(tmp_cwd):
     """Test that ASE optimizer validation works correctly."""
     Path("input.txt").write_text("C\n")
     user_dict = {"input_file_or_dir": "input.txt"}
@@ -62,7 +63,7 @@ def test_validate_ase_optimizer():
         PipelineSettings(**user_dict)
 
 
-def test_to_ase_options():
+def test_to_ase_options(tmp_cwd):
     """Test conversion to ASEOption object."""
     Path("input.txt").write_text("C\n")
     user_input = {
@@ -81,7 +82,7 @@ def test_to_ase_options():
     assert ase_options.max_cycle == user_input["ase_max_cycle"]
 
 
-def test_to_pyscf_options():
+def test_to_pyscf_options(tmp_cwd):
     """Test conversion to PySCFOption object."""
     Path("input.txt").write_text("C\n")
 
@@ -100,12 +101,12 @@ def test_to_pyscf_options():
     assert pyscf_options.dft_functional == "r2scan"
     assert pyscf_options.solvent_method is None
     assert pyscf_options.solvent_eps is None
+    assert pyscf_options.dispersion is None
 
     # Test with default solvent settings (pyscf_solvent=True)
     user_input["pyscf_solvent"] = True
     config = PipelineSettings(**user_input)
     pyscf_options = config.to_pyscf_options()
-
     assert pyscf_options.solvent_method == "IEF-PCM"
     assert pyscf_options.solvent_eps == 18.5
 
@@ -113,7 +114,6 @@ def test_to_pyscf_options():
     user_input["pyscf_solvent"] = ("COSMO", 78.36)
     config = PipelineSettings(**user_input)
     pyscf_options = config.to_pyscf_options()
-
     assert pyscf_options.solvent_method == "COSMO"
     assert pyscf_options.solvent_eps == 78.36
 
@@ -146,7 +146,7 @@ def test_from_yaml(tmp_cwd):
         'esp_probe_depth'].default
 
 
-def test_validate_additional_properties():
+def test_validate_additional_properties(tmp_cwd):
     """Test validation of additional properties."""
     Path("input.txt").write_text("C\n")
     user_input = {
