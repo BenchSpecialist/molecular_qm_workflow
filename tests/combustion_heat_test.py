@@ -1,5 +1,6 @@
 from collections import namedtuple
 import numpy as np
+from unittest.mock import patch, call
 import pytest
 
 from mqc_pipeline.property.combustion_heat import calc_combustion_heat
@@ -85,20 +86,18 @@ H           1.54581        0.30417        0.27394
 
 
 def test_unsupported_elements():
-    """
-    Test that unsupported elements raise a ValueError.
-    """
     smiles = "C[Si](C)(C)O[Al](O[Si](C)(C)C)O[Si](C)(C)C"
-    with pytest.raises(
-            ValueError,
-            match='Unsupported element Al for combustion heat calculation.'):
-        calc_combustion_heat(smiles, mol_heat=0)
-
     st = smiles_to_structure_rdk(smiles)
-    with pytest.raises(
-            ValueError,
-            match='Unsupported element Al for combustion heat calculation.'):
-        calc_combustion_heat(st, mol_heat=0)
+    err_msg = 'Unsupported element Al for combustion heat calculation.'
+
+    for inp in [smiles, st]:
+        with patch(
+                'mqc_pipeline.property.combustion_heat.logger') as mock_logger:
+            combustion_heat, reaction = calc_combustion_heat(inp, mol_heat=0)
+            # Check that the error message is logged
+            assert call(err_msg) in mock_logger.error.call_args_list
+            assert combustion_heat == 0
+            assert reaction == ''
 
 
 def test_unsupported_dft_level():

@@ -1,3 +1,4 @@
+import os
 from types import ModuleType
 from functools import lru_cache
 
@@ -20,6 +21,7 @@ def import_rks_uks() -> tuple[ModuleType, ModuleType]:
     try:
         from gpu4pyscf.dft import rks, uks
         logger.info("Using GPU-accelerated PySCF.")
+        os.environ['GPU4PYSCF_IMPORTED'] = '1'
         return rks, uks
     except (ImportError, AttributeError):
         from pyscf.dft import rks, uks

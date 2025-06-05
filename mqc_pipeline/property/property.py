@@ -1,3 +1,4 @@
+import os
 import time
 import json
 import numpy as np
@@ -6,15 +7,8 @@ from functools import lru_cache
 
 from ..util import get_default_logger, timeit
 
-try:
-    from gpu4pyscf.qmmm import chelpg
-    _USE_GPU = True
-except (ImportError, AttributeError):
-    _USE_GPU = False
-
 from ..common import Structure, setup_mean_field_obj
 from ..settings import PySCFOption, ESPGridsOption
-from ..import_util import import_rks_uks
 
 from .stability import get_homo_lumo_levels
 from .esp import generate_esp_grids, get_esp_range
@@ -33,6 +27,16 @@ class NumpyEncoder(json.JSONEncoder):
         if isinstance(obj, np.ndarray):
             return obj.tolist()
         return super().default(obj)
+
+
+@lru_cache(maxsize=1)
+def _import_chelpg():
+    try:
+        from gpu4pyscf.qmmm import chelpg
+        return chelpg
+    except (ImportError, AttributeError):
+        logger.error('CHELPG error: gpu4pyscf.qmmm.chelpg is not available.')
+        return None
 
 
 def _is_scf_done(mf_obj) -> bool:
@@ -185,7 +189,6 @@ def get_properties_main(st: Structure,
 
     :return: Structure object with populated `property` attribute.
     """
-    rks, uks = import_rks_uks()
     t_start = time.perf_counter()
 
     mol = st.to_pyscf_mole(basis=pyscf_options.basis)
@@ -204,32 +207,25 @@ def get_properties_main(st: Structure,
     # Get default properties: e_tot, HOMO, LUMO, dipole
     st = get_default_properties(st, mf, rdm1)
 
-    # ESP and CHELPG charges calculations can only run on GPUs
+    # ESP calculations can only run on GPUs
     if return_esp_range:
-        if _USE_GPU:
-            # Generate grids for ESP calculations
-            grids = generate_esp_grids(
-                mol,
-                rcut=esp_options.solvent_accessible_region,
-                space=esp_options.grid_spacing,
-                solvent_probe=esp_options.probe_depth)
-            esp_range, st.metadata['dft_esp_time'] = timeit(
-                get_esp_range, mol=mol, grids=grids, one_rdm=rdm1) # yapf:disable
-            st.property[ESP_MIN_KEY], st.property[ESP_MAX_KEY] = esp_range
-        else:
-            logger.warning(
-                "Electrostatic potential calculations are GPU-only.")
+        # Generate grids for ESP calculations
+        grids = generate_esp_grids(mol,
+                                   rcut=esp_options.solvent_accessible_region,
+                                   space=esp_options.grid_spacing,
+                                   solvent_probe=esp_options.probe_depth)
+        esp_range, st.metadata['dft_esp_time'] = timeit(
+            get_esp_range, mol=mol, grids=grids, one_rdm=rdm1) # yapf:disable
+        st.property[ESP_MIN_KEY], st.property[ESP_MAX_KEY] = esp_range
 
+    # CHELPG charges calculations are GPU-only
     if return_chelpg_chg:
-        if _USE_GPU:
-            # Evaluate CHELPG charges and transfers data from GPU (cupy) to CPU (numpy)
-            # CHELPG method fits atomic charges to reproduce ESP at a number of points
-            # around the molecule.
-            st.atom_property[CHELPG_CHARGE_KEY], st.metadata[
-                'dft_chelpg_time'] = timeit(
-                    lambda mf: chelpg.eval_chelpg_layer_gpu(mf).get(), mf=mf)
-        else:
-            logger.warning("CHELPG charges calculations are GPU-only.")
+        chelpg = _import_chelpg()
+        # Evaluate CHELPG charges: this method fits atomic charges to reproduce
+        # ESP at a number of points around the molecule.
+        st.atom_property[CHELPG_CHARGE_KEY], st.metadata[
+            'dft_chelpg_time'] = timeit(
+                lambda mf: chelpg.eval_chelpg_layer_gpu(mf).get(), mf=mf)
 
     # Currently, the total electronic energy is used to approximate the enthalpy
     if return_combustion_heat:
@@ -263,7 +259,7 @@ def get_properties_main(st: Structure,
             'dft_vdw_volume_time'] = timeit(get_vdw_volume,
                                             coords_angstrom=mol.atom_coords(),
                                             atomic_numbers=mol.atom_charges(),
-                                            use_gpu=_USE_GPU)
+                                            use_gpu=True)
 
     if return_polarizability and st.multiplicity == 1:
         # Backend function only supports closed-shell systems

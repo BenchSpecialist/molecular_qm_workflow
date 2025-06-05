@@ -4,7 +4,6 @@ from pathlib import Path
 from functools import lru_cache
 
 from .util import get_default_logger
-from .import_util import import_rks_uks
 
 logger = get_default_logger()
 # Imports for ASE backend
@@ -143,8 +142,6 @@ def optimize_by_pyscf(st: Structure,
     :return: Structure object with optimized geometry; the energy and forces of
              the equilibrium geometry are saved in the `property` attribute
     """
-    rks, uks = import_rks_uks()
-
     # Setup molecule
     mol = st.to_pyscf_mole(basis=options.basis)
 

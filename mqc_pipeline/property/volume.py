@@ -2,16 +2,9 @@ import numpy as np
 
 from ..constants import VDW_RADII_ANGSTROM
 from ..import_util import import_cupy
-from .esp import generate_esp_grids
+from .esp import generate_esp_grids, import_int3c1e
 
 cupy, _CUPY_AVAILABLE = import_cupy()
-
-try:
-    from gpu4pyscf.gto.int3c1e import int1e_grids
-    from gpu4pyscf.dft import numint
-    _GPU4PYSCF_AVAILABLE = True
-except (ImportError, AttributeError) as e:
-    _GPU4PYSCF_AVAILABLE = False
 
 
 def get_vdw_volume(coords_angstrom: np.ndarray,
@@ -172,6 +165,13 @@ def _get_density_isosurface_volume(pyscf_mol,
                     If None, adaptive padding is calculated based on molecular size
     :param grid_spacing: Spacing between grid points in angstroms
     """
+    int3c1e = import_int3c1e()
+    try:
+        from gpu4pyscf.dft import numint
+        _GPU4PYSCF_AVAILABLE = True
+    except (ImportError, AttributeError) as e:
+        _GPU4PYSCF_AVAILABLE = False
+
     if not _GPU4PYSCF_AVAILABLE:
         raise RuntimeError(
             "get_density_isosurface_volume: GPU4PySCF is required for density isosurface volume calculation."
@@ -218,7 +218,7 @@ def _get_density_isosurface_volume(pyscf_mol,
                                      space=grid_spacing,
                                      solvent_probe=0.0)
     # Calculate electron density at grid points
-    rho = int1e_grids(pyscf_mol, grid_coords, dm=one_rdm)
+    rho = int3c1e.int1e_grids(pyscf_mol, grid_coords, dm=one_rdm)
 
     # Evaluate density on grid
     # grid_coords_bohr = grid_coords * ANGSTROM_TO_BOHR

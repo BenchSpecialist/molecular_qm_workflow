@@ -10,7 +10,7 @@ _ESP_ABS_THRESHOLD_EV_SPIN0 = 27
 
 
 @lru_cache(maxsize=1)
-def _import_int3c1e():
+def import_int3c1e():
     try:
         from gpu4pyscf.gto import int3c1e
     except (ImportError, AttributeError) as e:
@@ -177,7 +177,7 @@ def get_esp_range(mol, grids: np.ndarray,
     if not _CUPY_AVAILABLE:
         raise RuntimeError(
             "get_esp_range: Required CuPy package not available.")
-    int3c1e = _import_int3c1e()
+    int3c1e = import_int3c1e()
     # Calculate electronic contribution to ESP at grid points
     # This integral represents the Coulomb potential from the electron density
     # v_grids_e = ∫ ρ(r')/|r-r'| dr', where ρ is the electron density

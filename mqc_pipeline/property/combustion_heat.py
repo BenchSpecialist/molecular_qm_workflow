@@ -7,9 +7,12 @@ from rdkit import Chem
 from ..constants import HARTREE_TO_EV
 from ..common import Structure
 from ..smiles_util import get_canonical_smiles_ob
+from ..util import get_default_logger
 
 _COMBUSTION_CSV = Path(__file__).parent / "ElementCombustionData.csv"
 _COMBUSTION_DF = polars.read_csv(_COMBUSTION_CSV)
+
+logger = get_default_logger()
 
 
 @dataclass(frozen=True)
@@ -78,22 +81,23 @@ def calc_combustion_heat(
         # Count elements
         for atom in mol.GetAtoms():
             element = atom.GetSymbol()
-            if element in ele_count:
-                ele_count[element] += 1
-            else:
-                raise ValueError(
+            if element not in ele_count:
+                logger.error(
                     f'Unsupported element {element} for combustion heat calculation.'
                 )
+                return 0, ''
+            ele_count[element] += 1
 
     if isinstance(smiles_or_st, Structure):
         st = smiles_or_st
         for element in st.elements:
-            if element in ele_count:
-                ele_count[element] += 1
-            else:
-                raise ValueError(
+            if element not in ele_count:
+                logger.error(
                     f'Unsupported element {element} for combustion heat calculation.'
                 )
+                return 0, ''
+            ele_count[element] += 1
+
         if not st.smiles or st.smiles.isspace():
             # Convert Structure to H-contained SMILES if not provided
             smiles = get_canonical_smiles_ob(st.to_xyz_block())
@@ -103,7 +107,7 @@ def calc_combustion_heat(
     # Check if nonflammable due to halogen content
     halogen_count = sum(ele_count[x] for x in ['F', 'Cl', 'Br', 'I'])
     if halogen_count >= ele_count['H'] and ele_count['H'] != 0:
-        print('Our model predict this material as nonflammable')
+        logger.info(f'{smiles}: nonflammable material due to halogen.')
         return 0, ''
 
     # H left after halogen formation
@@ -114,7 +118,7 @@ def calc_combustion_heat(
                             for element, count in ele_count.items())
 
     if total_oxy_consump <= 0:
-        print('Our model predict this material as nonflammable')
+        logger.info(f'{smiles}: nonflammable material.')
         return 0, ''
 
     # Calculate heat of products using the pre-converted ev field

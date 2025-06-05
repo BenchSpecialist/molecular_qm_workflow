@@ -249,6 +249,8 @@ def main():
 
     # Create output directory for batch files and logs
     output_dir = Path(settings.output_dir).resolve()
+    # Cache path to an environment variable so it's accessible in the workflow
+    # postprocessing when using "--combine-results" and "--cleanup" flags
     os.environ["MQC_OUTPUT_DIR"] = str(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
