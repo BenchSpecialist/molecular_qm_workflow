@@ -7,8 +7,7 @@ from pyscf import M
 from mqc_pipeline.smiles_util import smiles_to_structure_rdk, \
     get_canonical_smiles_rdk, get_canonical_smiles_ob, smiles_has_broken_bonds
 from mqc_pipeline.adaptors import get_adaptor
-
-from .conftest import requires_openbabel
+from mqc_pipeline.test_util import requires_openbabel
 
 
 def test_smiles_to_structure_rdk():

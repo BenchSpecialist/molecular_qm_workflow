@@ -7,8 +7,7 @@ from mqc_pipeline.property.combustion_heat import calc_combustion_heat
 from mqc_pipeline.constants import HARTREE_TO_EV
 from mqc_pipeline.common import Structure
 from mqc_pipeline.smiles_util import smiles_to_structure_rdk
-
-from .conftest import requires_openbabel
+from mqc_pipeline.test_util import requires_openbabel
 
 TestCase = namedtuple(
     'TestCase',
