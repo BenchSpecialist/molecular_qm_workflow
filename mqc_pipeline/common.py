@@ -253,4 +253,6 @@ def setup_mean_field_obj(mol, options: PySCFOption):
         mf.with_solvent.method = solvent_method
         mf.with_solvent.eps = options.solvent_eps
 
+    if disp := options.dispersion:
+        mf.disp = disp
     return mf
