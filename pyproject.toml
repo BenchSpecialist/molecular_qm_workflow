@@ -23,8 +23,13 @@ keywords = ["quantum chemistry", "computational chemistry", "chemoinformatics"]
 [project.urls]
 homepage = "https://github.com/Solid-Energy-Systems/mqc_pipeline"
 
-[tool.setuptools.packages.find]
-where = ["."]
+[tool.setuptools]
+packages = ["mqc_pipeline"]
+
+[tool.setuptools.package-data]
+mqc_pipeline = [
+    "property/*.csv"
+]
 
 [project.optional-dependencies]
 # temporary restore the old dependencies list for GH unittests workflow

@@ -1,5 +1,5 @@
-from collections import namedtuple
 import numpy as np
+from dataclasses import dataclass
 from unittest.mock import patch, call
 import pytest
 
@@ -9,37 +9,42 @@ from mqc_pipeline.common import Structure
 from mqc_pipeline.smiles_util import smiles_to_structure_rdk
 from mqc_pipeline.test_util import requires_openbabel
 
-TestCase = namedtuple(
-    'TestCase',
-    ['smiles', 'mol_heat', 'expected_combustion_heat', 'reaction_str'])
+
+@dataclass(slots=True)
+class Molecule:
+    smiles: str
+    mol_heat: float
+    expected_combustion_heat: float
+    reaction_str: str
+
 
 test_cases = [
     # Nonflammable systems
-    TestCase('OC(O)(F)F', 0, 0, ''),
-    TestCase('OO', 0, 0, ''),
+    Molecule('OC(O)(F)F', 0, 0, ''),
+    Molecule('OO', 0, 0, ''),
     # Flammable systems
-    TestCase('CO', 0, -3158.019652569623,
+    Molecule('CO', 0, -3158.019652569623,
              '1.00 * CO + 1.50 * O2 -> 2.00 * H2O + 1.00 * CO2'),
-    TestCase('[C-]#[O+]', 0, -3088.2150793075243,
+    Molecule('[C-]#[O+]', 0, -3088.2150793075243,
              '1.00 * [C-]#[O+] + 0.50 * O2 -> 1.00 * CO2'),
-    TestCase(
+    Molecule(
         'CN(C)S(=O)(=O)F', 0, -21327.63350042753,
         '1.00 * CN(C)S(=O)(=O)F + 3.25 * O2 -> 2.50 * H2O + 2.00 * CO2 + 0.50 * N2 + 1.00 * HF + 1.00 * SO2'
     ),
-    TestCase(
+    Molecule(
         'O=S(=O)(F)CCCCCF', -944.9859370316980 * HARTREE_TO_EV,
         -38.37295288985479,
         '1.00 * O=S(=O)(F)CCCCCF + 7.00 * O2 -> 4.00 * H2O + 5.00 * CO2 + 2.00 * HF + 1.00 * SO2'
     ),
-    TestCase(
+    Molecule(
         'FC(Cl)OP(=S)(OC)F', 0, -44338.306357703754,
         '1.00 * FC(Cl)OP(=S)(OC)F + 3.50 * O2 -> 0.50 * H2O + 2.00 * CO2 + 2.00 * HF + 0.50 * P2O5 + 1.00 * SO2 + 1.00 * HCl'
     ),
-    TestCase(
+    Molecule(
         'CN(C)C(=O)OP(=S)(F)Cl', 0, -44190.87101069842,
         '1.00 * CN(C)C(=O)OP(=S)(F)Cl + 5.25 * O2 -> 2.00 * H2O + 3.00 * CO2 + 0.50 * N2 + 1.00 * HF + 0.50 * P2O5 + 1.00 * SO2 + 1.00 * HCl'
     ),
-    TestCase(
+    Molecule(
         'FC[Si](Cl)(Cl)OP(=S)(N)C=O', 0, -63535.52364373139,
         '1.00 * FC[Si](Cl)(Cl)OP(=S)(N)C=O + 4.75 * O2 -> 1.00 * H2O + 2.00 * CO2 + 0.50 * N2 + 1.00 * HF + 1.00 * SiO2 + 0.50 * P2O5 + 1.00 * SO2 + 2.00 * HCl'
     )
