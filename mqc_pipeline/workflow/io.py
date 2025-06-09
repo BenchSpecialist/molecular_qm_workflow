@@ -8,6 +8,8 @@ from ..util import get_default_logger
 
 logger = get_default_logger()
 
+CSV_COL_NAMES = ("smiles", "Smiles", "SMILES")
+
 
 def read_smiles(input_file: str) -> list[str]:
     """
@@ -16,9 +18,16 @@ def read_smiles(input_file: str) -> list[str]:
     input_file = Path(input_file)
     if input_file.suffix == '.csv':
         df = polars.read_csv(input_file)
-        if 'smiles' not in df.columns:
-            raise ValueError("CSV file must contain a 'smiles' column.")
-        smiles_list = df['smiles'].to_list()
+
+        if not any(col in df.columns for col in CSV_COL_NAMES):
+            raise ValueError(
+                "CSV file must contain a column named 'smiles', 'Smiles', or 'SMILES'."
+            )
+
+        for smiles_col_name in CSV_COL_NAMES:
+            if smiles_col_name in df.columns:
+                smiles_list = df[smiles_col_name].to_list()
+
     elif input_file.suffix == '.txt':
         smiles_list = [
             line.strip() for line in input_file.read_text().splitlines()
