@@ -111,6 +111,12 @@ def _parse_args():
         "to prevent accidental deletion of batch results before they are combined into final output files."
     )
 
+    parser.add_argument(
+        "--extract-xyz",
+        type=str,
+        help=
+        "Specify the directory and extract XYZ files from atom_property.csv.")
+
     return parser.parse_args()
 
 
@@ -159,6 +165,20 @@ def main():
     Main function to run the pipeline.
     """
     args = _parse_args()
+
+    if args.extract_xyz:
+        atom_csv = Path('atom_property.csv')
+        if not atom_csv.exists():
+            raise SystemExit(f"atom_property.csv not found in {Path.cwd()}.")
+
+        from mqc_pipeline.workflow.io import write_xyz_dir_from_csv
+
+        out_xyz_dir = Path(args.extract_xyz).resolve()
+        num_xyz = write_xyz_dir_from_csv(csv_path=atom_csv,
+                                         output_dir=out_xyz_dir,
+                                         extended_xyz=True)
+        print(f"Extracted {num_xyz} XYZ files to {out_xyz_dir}")
+        return
 
     if args.cleanup:
         output_dir = Path(os.environ.get("MQC_OUTPUT_DIR",

@@ -54,3 +54,69 @@ def read_xyz_dir(input_dir: str) -> Generator[Structure, None, None]:
             yield read_xyz(file)
         except Exception as e:
             logger.error(f"Error reading {file}: {e}")
+
+
+def write_xyz_dir_from_csv(csv_path: str | Path,
+                           output_dir: str | Path,
+                           extended_xyz: bool = True) -> int:
+    """
+    Write XYZ files from a CSV file containing atom-level data.
+
+    The CSV file must contain the following columns:
+    - unique_id: Unique identifier for the molecule
+    - element: Chemical element symbol (e.g., 'C', 'O', 'H')
+    - x, y, z: Coordinates of the atom in Angstroms
+    - smiles: Optional column containing the SMILES string of the molecule
+    - Additional columns: Optional, will be included in the extended XYZ format
+    :param csv_path: Path to the input CSV file.
+    :param output_dir: Directory to save the output XYZ files.
+    :param extended_xyz: If True, include additional columns in the XYZ file.
+
+    :return: Number of XYZ files written.
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True, parents=True)
+
+    df = polars.read_csv(csv_path)
+
+    default_cols = ['unique_id', 'element', 'x', 'y', 'z']
+    if not all(col in df.columns for col in default_cols):
+        raise ValueError(
+            f"CSV file must contain the following columns: {', '.join(default_cols)}"
+        )
+
+    if extended_xyz:
+        additional_cols = set(df.columns) - set(default_cols) - {'smiles'}
+        additional_cols = sorted(list(additional_cols))
+
+    # Group by unique ID
+    unique_mol_ids = df["unique_id"].unique().to_list()
+    mol_data_dict = {
+        unique_id: df.filter(polars.col("unique_id") == unique_id)
+        for unique_id in unique_mol_ids
+    }
+    num_xyz = 0
+    for unique_id, mol_df in mol_data_dict.items():
+        xyz_path = output_dir / f"{unique_id}.xyz"
+
+        comment = f'{mol_df["smiles"].to_list()[0]}'
+        if extended_xyz:
+            comment += f' AddtionalColumns: {", ".join(additional_cols)}'
+
+        lines = [f"{mol_df.shape[0]}", f"{comment}"]
+
+        # Write atom coordinates and forces
+        for row in mol_df.rows(named=True):
+            element = row["element"]
+            x, y, z = row["x"], row["y"], row["z"]
+            line = f"{element:<2} {x:>15.6f} {y:>15.6f} {z:>15.6f}"
+
+            if extended_xyz:
+                for col in additional_cols:
+                    line += f" {row[col]:>15.6f}"
+            lines.append(line)
+
+        xyz_path.write_text("\n".join(lines))
+        num_xyz += 1
+
+    return num_xyz
