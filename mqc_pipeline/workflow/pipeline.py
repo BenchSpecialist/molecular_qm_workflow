@@ -116,18 +116,17 @@ def run_one_batch(inputs: list[str] | list[Structure],
         st = run_one_molecule(smiles_or_st,
                               opt_func=opt_func,
                               prop_func=prop_func)
-        if st:
-            out_sts.append(st)
-        else:
-            progress_logger.info(f"{i + 1}/{total_count} FAILED")
 
-        # Log progress at specified intervals
-        if (i + 1
-            ) % settings.progress_log_interval == 0 or i + 1 == total_count:
-            progress_logger.info(f"{i + 1}/{total_count} DONE")
+        if st is None:
+            progress_logger.info(f"{i + 1}/{total_count} FAILED")
+        else:
+            out_sts.append(st)
+            # Log progress at specified intervals
+            if (i + 1) % settings.progress_log_interval == 0 \
+                or i + 1 == total_count:
+                progress_logger.info(f"{i + 1}/{total_count} DONE")
 
     ext = settings.output_file_format.lower()
-
     if len(out_sts) == 0:
         logger.warning("No successful structures processed. Exiting.")
         return

@@ -195,6 +195,21 @@ def main():
             for outfile in outfiles_to_combine:
                 _combine_csv_files(batch_dirs, outfile)
 
+            # Combine "FAILED_INPUTS.txt" files if exist
+            failed_inputs_files = [
+                batch_dir / "FAILED_INPUTS.txt" for batch_dir in batch_dirs
+                if (batch_dir / "FAILED_INPUTS.txt").exists()
+            ]
+            if failed_inputs_files:
+                combined_failed_inputs = output_dir / "FAILED_INPUTS.txt"
+                with open(combined_failed_inputs, 'w') as outfile:
+                    for failed_file in failed_inputs_files:
+                        with open(failed_file, 'r') as infile:
+                            outfile.write(infile.read())
+                print(
+                    f"Combined {len(failed_inputs_files)} FAILED_INPUTS.txt into {combined_failed_inputs}"
+                )
+
         if args.cleanup:
             for dir in batch_dirs:
                 try:
