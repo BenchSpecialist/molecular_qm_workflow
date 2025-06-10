@@ -151,7 +151,7 @@ def _combine_csv_files(batch_dirs: list[Path], filename: str) -> None:
 
     # Read and combine all CSV files
     dataframes = [polars.read_csv(csv_file) for csv_file in csv_files]
-    combined_df = polars.concat(dataframes)
+    combined_df = polars.concat(dataframes, how='diagonal')
 
     # Write combined df to a new CSV file in the parent directory
     output_file = batch_dirs[0].parent / filename

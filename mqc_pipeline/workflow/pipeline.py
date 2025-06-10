@@ -45,7 +45,7 @@ def run_one_molecule(smiles_or_st: str | Structure,
             err_msg = f"{smiles}: 3D structure generation failed - {str(e)}"
             _log_failed_inputs(err_msg)
             return
-        logger.info(f"{smiles}: RDKit embedding succeeded.")
+        logger.info(f"{smiles}: SMILES to 3D structure generation succeeded.")
     else:
         raise RuntimeError(
             "Input must be a SMILES string or a Structure object.")

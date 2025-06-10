@@ -168,7 +168,7 @@ class PipelineSettings(BaseModel):
 
     # Calculation parameters
     smiles_to_3d_method: str = Field(
-        default="openbabel",
+        default="rdkit",
         description="Method to convert SMILES to 3D structures.\n"
         f"# Supported methods: {', '.join(SUPPORTED_3D_GUESSER)}.")
 
