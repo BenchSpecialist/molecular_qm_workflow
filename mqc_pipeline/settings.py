@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 ### Module constants ###
+SUPPORTED_3D_GUESSER = ('rdkit', 'openbabel')
+
 METHOD_AIMNet2 = 'AIMNET2'
 METHOD_DFT = 'DFT'
 SUPPORTED_GEOMETRY_OPT_METHODS = [METHOD_AIMNet2, METHOD_DFT]
@@ -165,6 +167,11 @@ class PipelineSettings(BaseModel):
         description="Name of the SLURM job. Only relevant when num_jobs > 0.")
 
     # Calculation parameters
+    smiles_to_3d_method: str = Field(
+        default="openbabel",
+        description="Method to convert SMILES to 3D structures.\n"
+        f"# Supported methods: {', '.join(SUPPORTED_3D_GUESSER)}.")
+
     geometry_opt_method: str | None = Field(
         default=METHOD_DFT,
         description="Method for geometry optimization.\n"
@@ -368,6 +375,17 @@ class PipelineSettings(BaseModel):
             raise ValidationError(
                 f"Input file or directory does not exist: {input_file_or_dir}")
         return str(input_file_or_dir)
+
+    @field_validator('smiles_to_3d_method')
+    def validate_smiles_to_3d_method(cls, method: str) -> str:
+        """
+        Validates that the SMILES to 3D conversion method is one of the supported values.
+        """
+        if method.lower() not in SUPPORTED_3D_GUESSER:
+            raise ValidationError(
+                f"Unsupported SMILES to 3D conversion method: {method}. "
+                f"Supported methods are: {', '.join(SUPPORTED_3D_GUESSER)}")
+        return method.lower()
 
     @field_validator('geometry_opt_method')
     def validate_geometry_opt_method_basic(cls,

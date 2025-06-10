@@ -8,21 +8,114 @@ from rdkit.Chem import AllChem
 from rdkit.Chem import rdDetermineBonds
 from rdkit.Chem.rdMolTransforms import GetBondLength
 
+from .constants import chemical_symbols
 from .common import Structure, get_unpaired_electrons
 from .adaptors import get_adaptor
 from .util import get_default_logger
 
 logger = get_default_logger()
-MAX_ATTEMPTS_EMBED = 100
+
+_RDKIT_MAX_ATTEMPTS = 100
+_PYBEL_FORCEFILED = "mmff94"
+
+
+def smiles_to_structure(smiles: str,
+                        method: str = 'openbabel',
+                        **kwargs) -> Structure:
+    """
+    Convert a SMILES string to a 3D structure using the specified method.
+
+    :param smiles: A SMILES string representing the molecule.
+    :param method: Method to use for structure generation, either 'rdkit' or 'openbabel'.
+
+    :return: A Structure object containing the elements, 3D coordinates, and SMILES string.
+    """
+    if method == "rdkit":
+        return smiles_to_structure_rdk(smiles,
+                                       max_attempts=kwargs.get(
+                                           "max_attempts",
+                                           _RDKIT_MAX_ATTEMPTS))
+    elif method == "openbabel":
+        return smiles_to_structure_pybel(smiles,
+                                         forcefield=kwargs.get(
+                                             "forcefield", _PYBEL_FORCEFILED))
+    else:
+        raise ValueError(f'smiles_to_structure: "{method}" is not supported.')
+
+
+@lru_cache(maxsize=1)
+def _import_pybel():
+    """Import pybel module once and cache it."""
+    from openbabel import pybel
+    return pybel
+
+
+def smiles_to_structure_pybel(smiles: str,
+                              forcefield=_PYBEL_FORCEFILED) -> Structure:
+    """
+    Convert a SMILES string to a 3D structure using OpenBabel.
+
+    :param smiles: A SMILES string representing the molecule.
+    :return: A Structure object containing the elements, 3D coordinates, and SMILES string.
+    """
+    try:
+        pybel = _import_pybel()
+    except ImportError as e:
+        err_msg = "Function smiles_to_structure_pybel needs openbabel package, which is not installed."
+        logger.error(err_msg)
+        raise ImportError(err_msg) from e
+
+    t_start = time.perf_counter()
+    try:
+        mol = pybel.readstring("smi", smiles)
+    except Exception as e:
+        err_msg = f"smiles_to_structure_pybel: {str(e)}"
+        logger.error(err_msg)
+        raise ValueError(err_msg)
+
+    # Generate 3D coordinates: hydrogens are added and a quick local optimization
+    # is carried out with 50 steps using MMFF94 forcefield.
+    mol.make3D(forcefield=_PYBEL_FORCEFILED, steps=50)
+
+    # Improve the coordinates further
+    mol.localopt(forcefield=forcefield, steps=500)
+
+    # Check if the OpenBabel-generated geometry is physical:
+    # bond distances should be in the range of 0.5 angstrom ~ 3 angstrom
+    ob_mol = mol.OBMol
+    bond_distances = [
+        np.linalg.norm(
+            np.array(mol.atoms[bond.GetBeginAtomIdx() - 1].coords) -
+            np.array(mol.atoms[bond.GetEndAtomIdx() - 1].coords))
+        for bond in pybel.ob.OBMolBondIter(ob_mol)
+    ]
+    if any(distance < 0.5 or distance > 3.0 for distance in bond_distances):
+        bd_err_msg = f"{smiles}: Unphysical bond distances in the OpenBabel conformer.\n{bond_distances}"
+        logger.error(bd_err_msg)
+        raise RuntimeError(bd_err_msg)
+
+    metadata = {
+        "openbabel_time": round(time.perf_counter() - t_start, 4),
+    }
+
+    return Structure(
+        elements=[chemical_symbols[atom.atomicnum] for atom in mol.atoms],
+        xyz=np.array([atom.coords for atom in mol.atoms]),
+        smiles=smiles,
+        charge=mol.charge,
+        multiplicity=mol.spin,
+        metadata=metadata)
 
 
 def smiles_to_structure_rdk(smiles: str,
-                            max_attempts: float = MAX_ATTEMPTS_EMBED
+                            max_attempts: float = _RDKIT_MAX_ATTEMPTS
                             ) -> Structure:
     """
     Convert a SMILES string to a 3D structure using RDKit.
 
     :param smiles: A SMILES string representing the molecule.
+    :param max_attempts: Maximum attempts for embedding with RDKit.
+
     :return: A Structure object containing the elements, 3D coordinates, and SMILES string.
 
     :raises ValueError: If the SMILES string is invalid or if embedding fails.
@@ -122,13 +215,6 @@ def get_canonical_smiles_rdk(input) -> str:
         rdkit_mol = adaptor.to_rdkit_mol(remove_hydrogens=True)
 
     return Chem.CanonSmiles(Chem.MolToSmiles(rdkit_mol))
-
-
-@lru_cache(maxsize=1)
-def _import_pybel():
-    """Import pybel module once and cache it."""
-    from openbabel import pybel
-    return pybel
 
 
 def get_canonical_smiles_ob(xyz_file_or_block) -> str:

@@ -6,7 +6,7 @@ from functools import partial
 
 from ..settings import PipelineSettings, METHOD_AIMNet2, METHOD_DFT
 from ..common import Structure
-from ..smiles_util import smiles_to_structure_rdk
+from ..smiles_util import smiles_to_structure
 from .. import optimize
 from ..property import get_properties_main
 from ..structure_io import write_molecule_property, write_atom_property
@@ -31,6 +31,7 @@ def _log_failed_inputs(error_msg: str) -> None:
 
 def run_one_molecule(smiles_or_st: str | Structure,
                      prop_func: Callable,
+                     smiles_to_3d_method: Optional[str] = None,
                      opt_func: Optional[Callable] = None) -> Structure | None:
     t_start = time.perf_counter()
     if isinstance(smiles_or_st, Structure):
@@ -39,7 +40,7 @@ def run_one_molecule(smiles_or_st: str | Structure,
         smiles = smiles_or_st
         # 3D structure generation from SMILES
         try:
-            st = smiles_to_structure_rdk(smiles)
+            st = smiles_to_structure(smiles, method=smiles_to_3d_method)
         except Exception as e:
             err_msg = f"{smiles}: 3D structure generation failed - {str(e)}"
             _log_failed_inputs(err_msg)
@@ -113,9 +114,11 @@ def run_one_batch(inputs: list[str] | list[Structure],
     for i, smiles_or_st in enumerate(inputs):
         # The function does error handling/logging internally
         # and returns None if it fails.
-        st = run_one_molecule(smiles_or_st,
-                              opt_func=opt_func,
-                              prop_func=prop_func)
+        st = run_one_molecule(
+            smiles_or_st,
+            smiles_to_3d_method=settings.smiles_to_3d_method.lower(),
+            opt_func=opt_func,
+            prop_func=prop_func)
 
         if st is None:
             progress_logger.info(f"{i + 1}/{total_count} FAILED")

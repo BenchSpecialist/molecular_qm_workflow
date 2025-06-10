@@ -5,7 +5,8 @@ from rdkit import Chem
 from pyscf import M
 
 from mqc_pipeline.smiles_util import smiles_to_structure_rdk, \
-    get_canonical_smiles_rdk, get_canonical_smiles_ob, smiles_has_broken_bonds
+    get_canonical_smiles_rdk, get_canonical_smiles_ob, smiles_has_broken_bonds,\
+    smiles_to_structure_pybel
 from mqc_pipeline.adaptors import get_adaptor
 from mqc_pipeline.test_util import requires_openbabel
 
@@ -119,3 +120,26 @@ def test_get_canonical_smiles_ob(xyz_block, expected_smiles, tmp_cwd):
     xyz_file = "test.xyz"
     Path(xyz_file).write_text(xyz_block)
     assert get_canonical_smiles_ob(xyz_file) == expected_smiles
+
+
+@requires_openbabel()
+def test_smiles_to_structure_pybel():
+    # The following SMILES string failed with 100 attempts when using `smiles_to_structure_rdk`
+    smiles = "O=S(=O)(O)OCC12OOC3(OO1)OC14OC(OON(S(=O)(=O)O)O1)C2C34"
+    st = smiles_to_structure_pybel(smiles)
+    assert st.smiles == smiles
+    assert st.xyz.shape == (33, 3)
+    # Check that the H atoms are added correctly
+    assert len([el for el in st.elements if el == 'H']) == 7
+    assert st.charge == 0
+    assert st.multiplicity == 1
+    assert "openbabel_time" in st.metadata
+
+    # Raise error when given an invalid SMILES string
+    invalid_smiles = "C]"
+    with pytest.raises(
+            ValueError,
+            match=
+            f"smiles_to_structure_pybel: Failed to convert '{invalid_smiles}' to format 'smi'"
+    ):
+        smiles_to_structure_pybel(invalid_smiles)
