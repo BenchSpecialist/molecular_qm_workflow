@@ -6,7 +6,8 @@ from ..import_util import import_cupy
 
 # If the absolute value of the ESP for closed-shell systems is greater than this
 # threshold, the ESP calculation is considered to be unreliable.
-_ESP_ABS_THRESHOLD_EV_SPIN0 = 27
+# -2.0 to 2.0 Eh
+_ESP_ABS_THRESHOLD_EV_SPIN0 = 55
 
 
 @lru_cache(maxsize=1)
@@ -218,6 +219,6 @@ def get_esp_range(mol, grids: np.ndarray,
                 esp_max) > _ESP_ABS_THRESHOLD_EV_SPIN0:
             raise ValueError(
                 f"ESP range (min: {esp_min:.2f} eV, max: {esp_max:.2f} eV) for "
-                "closed shell species are outside the expected range (-27 to 27 eV). "
+                f"closed shell molecule is beyond the expected range (-{_ESP_ABS_THRESHOLD_EV_SPIN0} to {_ESP_ABS_THRESHOLD_EV_SPIN0} eV)."
             )
         return esp_min, esp_max
