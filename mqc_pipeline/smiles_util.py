@@ -243,6 +243,19 @@ def get_canonical_smiles_ob(xyz_file_or_block) -> str:
     return obmol.write("can").strip().split('\t')[0]
 
 
+def get_canonical_smiles_for_xyz(xyz_block: str) -> str:
+    """
+    Get the RDKit-defined canonical SMILES string for a 3D structure represented
+    by an XYZ block.
+
+    :param xyz_block: A string containing the XYZ format of the molecule.
+    :return: Canonical SMILES string in the RDKit definition.
+    """
+    ob_can_smiles = get_canonical_smiles_ob(xyz_block)
+    rdkit_mol = Chem.MolFromSmiles(ob_can_smiles)
+    return Chem.MolToSmiles(rdkit_mol, isomericSmiles=False, canonical=True)
+
+
 def smiles_has_broken_bonds(smiles) -> bool:
     """
     Check if a SMILES string has broken bonds (i.e., disconnected fragments).
