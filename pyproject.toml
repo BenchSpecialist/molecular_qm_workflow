@@ -35,6 +35,9 @@ mqc_pipeline = [
 # temporary restore the old dependencies list for GH unittests workflow
 cpu_test = [
     "pytest>=7.0.0",
+    "pytest-asyncio>=0.20.0",
+    "aiohttp",
+    "more_itertools",
     "numpy >= 1.20.0",
     "scipy>=1.6.0",
     'pydantic >= 1.10',
