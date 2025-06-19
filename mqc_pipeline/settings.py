@@ -20,7 +20,7 @@ _DEFAULT_BASIS = '6311g*'
 _DEFAULT_FUNCTIONAL = 'b3lypg'
 _DEFAULT_SCF_MAX_CYCLE = 100  # default: 50 in pyscf
 _DEFAULT_SCF_CONV_TOL = 1e-09  # default: 1e-09 in pyscf
-_DEFAULT_GRIDS_LEVEL = 3  # default: 3 in pyscf
+_DEFAULT_GRIDS_LEVEL = 4  # default: 3 in pyscf
 _DEFAULT_SOLVENT_METHOD = 'IEF-PCM'
 _DEFAULT_SOLVENT_EPS = 18.5
 # Grimme's D3 dispersion correction with Becke-Johnson damping
@@ -43,13 +43,15 @@ class AdditionalProperty(Enum):
     VDW_VOLUME = "vdw_volume"
     ISOTROPIC_POLARIZABILITY = "isotropic_polarizability"
     QUADRUPOLE = "quadrupole"
+    FLUORIDE_BDE = "fluoride_bde"
 
     @classmethod
-    def _default_props_solvent(cls) -> set[str]:
-        return {
-            cls.COMBUSTION_HEAT.value, cls.CHELPG_CHARGES.value,
-            cls.ESP_RANGE.value
-        }
+    def _default_props_solvent(cls) -> list[str]:
+        return [
+            cls.COMBUSTION_HEAT.value,
+            cls.ESP_RANGE.value,
+            cls.CHELPG_CHARGES.value,
+        ]
 
     @classmethod
     def to_kwargs_mapping(cls) -> dict[str, str]:
@@ -62,7 +64,8 @@ class AdditionalProperty(Enum):
             cls.FREQ.value: "return_freq",
             cls.VDW_VOLUME.value: "return_volume",
             cls.ISOTROPIC_POLARIZABILITY.value: "return_polarizability",
-            cls.QUADRUPOLE.value: "return_quadrupole"
+            cls.QUADRUPOLE.value: "return_quadrupole",
+            cls.FLUORIDE_BDE.value: "return_fluoride_bde",
         }
 
 

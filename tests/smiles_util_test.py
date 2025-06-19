@@ -6,7 +6,7 @@ from pyscf import M
 
 from mqc_pipeline.smiles_util import smiles_to_structure_rdk, \
     get_canonical_smiles_rdk, get_canonical_smiles_ob, smiles_has_broken_bonds,\
-    smiles_to_structure_pybel
+    smiles_to_structure_pybel, generate_optimized_rdk_confs
 from mqc_pipeline.adaptors import get_adaptor
 from mqc_pipeline.test_util import requires_openbabel
 
@@ -143,3 +143,15 @@ def test_smiles_to_structure_pybel():
             f"smiles_to_structure_pybel: Failed to convert '{invalid_smiles}' to format 'smi'"
     ):
         smiles_to_structure_pybel(invalid_smiles)
+
+
+def test_generate_optimized_rdk_confs():
+    smiles = "C#CS(=O)(=O)F"
+    rdmol = Chem.AddHs(Chem.MolFromSmiles(smiles))
+
+    for inp in [smiles, rdmol]:
+        rdmol, conf_id_energies = generate_optimized_rdk_confs(
+            inp, target_n_conformers=100, rmsd_threshold=0.2, max_attempts=100)
+        assert rdmol.GetNumConformers() == len(conf_id_energies), (
+            "Number of conformers does not match the number of energies generated"
+        )

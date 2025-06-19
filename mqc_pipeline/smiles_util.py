@@ -108,7 +108,7 @@ def smiles_to_structure_pybel(smiles: str,
 
 
 def smiles_to_structure_rdk(smiles: str,
-                            max_attempts: float = _RDKIT_MAX_ATTEMPTS
+                            max_attempts: int = _RDKIT_MAX_ATTEMPTS
                             ) -> Structure:
     """
     Convert a SMILES string to a 3D structure using RDKit.
@@ -267,3 +267,75 @@ def smiles_has_broken_bonds(smiles) -> bool:
     # Get connected components (fragments)
     fragments = Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False)
     return len(fragments) > 1
+
+
+def generate_optimized_rdk_confs(
+    input: Chem.rdchem.Mol | str,
+    target_n_conformers: int = 20,
+    rmsd_threshold: float = 0.5,
+    max_attempts: int = 1000
+) -> tuple[Chem.rdchem.Mol, list[tuple[int, float]]]:
+    """
+    Generate multiple optimized conformers for a given RDKit molecule or SMILES string.
+    The function uses RDKit to generate conformers and optimize them using MMFF.
+    :param input: A SMILES string or an RDKit Mol object.
+    :param target_n_conformers: Target number of conformers to generate, upper
+                                bound of the final number of conformers returned.
+    :param rmsd_threshold: RMSD threshold for pruning conformers.
+    :param max_attempts: Maximum number of attempts to generate conformers.
+    :return: A tuple containing the RDKit Mol object with conformers and a list of
+             sorted conformer ID tuple (ID, final energy in kcal/mol) in ascending
+             order of their final energies.
+    """
+    # Check if the input is a valid SMILES string or an RDKit Mol object
+    if isinstance(input, str):
+        smiles = input.strip()
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            raise ValueError(f"Invalid SMILES string: {smiles}")
+        mol = Chem.AddHs(mol)
+    elif isinstance(input, Chem.rdchem.Mol):
+        mol = input
+        smiles = Chem.MolToSmiles(mol, isomericSmiles=False, canonical=True)
+    else:
+        raise TypeError(
+            "generate_optimized_rdk_confs: Input must be a SMILES string or an RDKit Mol object."
+        )
+
+    params = AllChem.ETKDGv3()
+    params.pruneRmsThresh = rmsd_threshold
+    params.randomSeed = 42
+    params.numThreads = 0  # Use all available CPUs
+    params.useBasicKnowledge = True
+    params.useExpTorsionAnglePrefs = True
+    params.enforceChirality = False
+    params.useSmallRingTorsions = False
+    try:
+        params.useRotatableBondPruning = True
+        params.maxAttempts = max_attempts
+    except AttributeError:
+        pass
+
+    # Generate multiple conformers
+    conf_ids = AllChem.EmbedMultipleConfs(mol,
+                                          numConfs=target_n_conformers,
+                                          params=params)
+    if not conf_ids:
+        logger.warning(
+            f"generate_optimized_rdk_confs: No conformers generated for {smiles}"
+        )
+        return mol, []
+
+    # Optimize each conformer
+    conf_id_energies = []
+    for conf_id in conf_ids:
+        props = AllChem.MMFFGetMoleculeProperties(mol)
+        ff = AllChem.MMFFGetMoleculeForceField(mol, props, confId=conf_id)
+        if ff is not None:
+            ff.Minimize()
+            final_energy = ff.CalcEnergy()
+            conf_id_energies.append((conf_id, final_energy))
+
+    # Sort conformer index by energy in ascending order
+    conf_id_energies.sort(key=lambda x: x[1])
+    return mol, conf_id_energies

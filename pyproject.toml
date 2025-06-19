@@ -43,17 +43,14 @@ cpu_test = [
     'pydantic >= 1.10',
     'PyYAML >= 6.0',
     'h5py >= 3.0',
-    'rdkit',
-    'ase',
+    'rdkit>=2024.09.6',
+    'ase >= 3.25.0',
     'pyscf > 2.5.0',
-    'geometric', # for geometry optimization
-    "loguru", # for logging
+    'geometric', # for PySCF geometry optimization
+    "loguru",    # for logging
     # "pandas>=2.2.3",
-    "pyarrow",
-    "polars >= 0.20.0", # for data processing
-]
-dev = [
-    "pytest>=7.0.0",
+    "pyarrow==16.1.0",
+    "polars==1.30.0", # for data processing
 ]
 # Example use: pip install .[gpu]
 gpu = [

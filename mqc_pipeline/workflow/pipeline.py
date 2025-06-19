@@ -127,7 +127,9 @@ def run_one_batch(inputs: list[str] | list[Structure],
             # Log progress at specified intervals
             if (i + 1) % settings.progress_log_interval == 0 \
                 or i + 1 == total_count:
-                progress_logger.info(f"{i + 1}/{total_count} DONE")
+                progress_logger.info(
+                    f"{i + 1}/{total_count} DONE in {st.metadata['total_time']} seconds"
+                )
 
     ext = settings.output_file_format.lower()
     if len(out_sts) == 0:

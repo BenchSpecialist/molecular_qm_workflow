@@ -162,7 +162,32 @@ class Structure:
                        xyz=np.array(xyz),
                        charge=total_charge)
 
-        return cls(elements=elements, xyz=np.array(xyz))
+        smiles = ""
+        charge = _DEFAULT_CHARGE
+        multiplicity = _DEFAULT_MULTIPLICITY
+        unique_id = str(uuid4().int)[:_UNIQUE_KEY_LENGTH]
+        if comment_line := lines[1]:
+            from rdkit import Chem
+            parts = comment_line.split()
+
+            likely_smiles = parts[0].strip()
+            if Chem.MolFromSmiles(likely_smiles) is not None:
+                smiles = likely_smiles
+
+            for part in parts:
+                if part.startswith('charge:'):
+                    charge = int(part.split(':')[1])
+                if part.startswith('multiplicity:'):
+                    multiplicity = int(part.split(':')[1])
+                if part.startswith('unique_id:'):
+                    unique_id = part.split(':')[1]
+
+        return cls(elements=elements,
+                   xyz=np.array(xyz),
+                   unique_id=unique_id,
+                   charge=charge,
+                   multiplicity=multiplicity,
+                   smiles=smiles)
 
     @staticmethod
     def get_unpaired_electrons(atom_numbers_or_eles: list[int] | list[str],

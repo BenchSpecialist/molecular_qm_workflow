@@ -18,7 +18,7 @@ install: clean
 
 # Install with dev dependencies
 install-dev:
-	$(PYTHON) -m pip install -e ".[dev]"
+	$(PYTHON) -m pip install -e ".[cpu_test]"
 
 # Build package
 build: clean

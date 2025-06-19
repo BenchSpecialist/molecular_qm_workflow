@@ -1,4 +1,3 @@
-import os
 import time
 import json
 import numpy as np
@@ -14,6 +13,7 @@ from .stability import get_homo_lumo_levels
 from .esp import generate_esp_grids, get_esp_range
 from .volume import get_vdw_volume
 from .combustion_heat import calc_combustion_heat
+from .bde import calc_fluoride_bond_dissociation_energy
 from .keys import (DFT_ENERGY_KEY, HOMO_KEY, LUMO_KEY, ESP_MIN_KEY,
                    ESP_MAX_KEY, DIPOLE_X_KEY, DIPOLE_Y_KEY, DIPOLE_Z_KEY,
                    DFT_FORCES_KEY, CHELPG_CHARGE_KEY)
@@ -173,6 +173,7 @@ def get_properties_main(st: Structure,
                         return_freq: bool = False,
                         return_volume: bool = False,
                         return_polarizability: bool = False,
+                        return_fluoride_bde: bool = False,
                         return_quadrupole: bool = False) -> Structure:
     """
     Compute properties for the given structure (neutral molecule) using PySCF.
@@ -269,7 +270,18 @@ def get_properties_main(st: Structure,
                     get_isotropic_polarizability, mf)
         except Exception as e:
             logger.error(
-                f"{st.smiles} (id={st.unique_id}): Failed to calculate isotropic polarizability: {str(e)}"
+                f"{st.smiles} (id={st.unique_id}): Failed to get isotropic polarizability: {str(e)}"
+            )
+
+    if return_fluoride_bde:
+        try:
+            st, st.metadata['dft_fluoride_bde_time'] = timeit(
+                calc_fluoride_bond_dissociation_energy,
+                st=st,
+                pyscf_options=pyscf_options)
+        except Exception as e:
+            logger.error(
+                f"{st.smiles} (id={st.unique_id}): fluoride BDE failed - {str(e)}"
             )
 
     # PySCF is not expected to change the order of atoms, but we update it just in case

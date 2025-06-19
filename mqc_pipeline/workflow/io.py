@@ -49,11 +49,11 @@ def read_xyz_dir(input_dir: str) -> Generator[Structure, None, None]:
     >>>     process_one_molecule(st)
     >>> full_sts_list = list(read_xyz_dir(input_dir))
     """
-    for file in Path(input_dir).glob('*.xyz'):
+    for xyz_file in Path(input_dir).glob('*.xyz'):
         try:
-            yield read_xyz(file)
+            yield read_xyz(xyz_file, parse_comment=True)
         except Exception as e:
-            logger.error(f"Error reading {file}: {e}")
+            logger.error(f"Error parsing {xyz_file}: {e}")
 
 
 def write_xyz_dir_from_csv(csv_path: str | Path,
@@ -101,7 +101,8 @@ def write_xyz_dir_from_csv(csv_path: str | Path,
 
         comment = f'{mol_df["smiles"].to_list()[0]}'
         if extended_xyz:
-            comment += f' AddtionalColumns: {", ".join(additional_cols)}'
+            comment += f' unique_id:{unique_id}'
+            comment += f' AddtionalColumns:{",".join(additional_cols)}'
 
         lines = [f"{mol_df.shape[0]}", f"{comment}"]
 

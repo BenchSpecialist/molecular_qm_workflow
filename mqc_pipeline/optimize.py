@@ -14,7 +14,7 @@ from pyscf.geomopt import geometric_solver
 
 from .common import Structure, setup_mean_field_obj, COORDINATE_UNIT
 from .constants import EV_TO_HARTREE
-from .property import DFT_ENERGY_KEY, DFT_FORCES_KEY
+from .property.keys import DFT_ENERGY_KEY, DFT_FORCES_KEY
 from .settings import ASEOption, PySCFOption, METHOD_AIMNet2
 
 OPTIMIZER_NAME_TO_CLASS = {'BFGS': BFGS, 'FIRE': FIRE}
