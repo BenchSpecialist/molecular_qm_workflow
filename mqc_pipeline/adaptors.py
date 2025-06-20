@@ -36,9 +36,13 @@ from abc import ABC, abstractmethod
 
 from rdkit import Chem
 from rdkit.Chem import rdDetermineBonds
+from rdkit.Chem.rdchem import Conformer
 from pyscf import gto, M
 
 from .common import Structure, COORDINATE_UNIT, get_unpaired_electrons
+from .util import get_default_logger
+
+logger = get_default_logger()
 
 
 class MoleculeAdaptor(ABC):
@@ -79,23 +83,60 @@ class StructureAdaptor(MoleculeAdaptor):
                                  The canonical SMILES string will not have H atoms
         :return: an `rdkit.Chem.rdchem.Mol` object representing the structure.
         """
-        # Create an XYZ block from elements and xyz coordinates
-        xyz_block = f"{len(self.st.elements)}\n\n" + "\n".join(
-            f"{el} {x} {y} {z}"
-            for el, (x, y, z) in zip(self.st.elements, self.st.xyz)) # yapf:disable
-        # Create a molecule from the XYZ block
-        mol = Chem.MolFromXYZBlock(xyz_block)
-        if mol is None:
-            raise RuntimeError(
-                "StructureAdaptor: Failed to create RDKit Mol from XYZ block.")
+        st = self.st
+        rdmol = None
+        if st.smiles and (not st.smiles.isspace()):
+            # mol object from SMILES contains atom, charge, bonding info
+            rdmol = Chem.MolFromSmiles(self.st.smiles)
+            rdmol = Chem.AddHs(rdmol)  # Add hydrogens if not present
+            if rdmol.GetNumAtoms() != len(st.elements):
+                raise RuntimeError(
+                    f'StructureAdaptor.to_rdkit_mol: Number of atoms in RDKit mol ({st.smiles}) '
+                    f"({rdmol.GetNumAtoms()}) doesn't match input Structure ({len(st.elements)}) "
+                )
 
-        # Resolve bonding info based on coordinates
-        rdDetermineBonds.DetermineConnectivity(mol, charge=self.st.charge)
+        if rdmol is None:
+            # build the molecule template with atom, charge info
+            rdmol = Chem.RWMol()  # RWMol = editable molecule
+
+            charge_assigned = False
+            if st.charge > 0:
+                candidates = ['N', 'P', 'S', 'B']
+            elif st.charge < 0:
+                candidates = ['O', 'N', 'F', 'Cl', 'Br', 'I', 'S', 'B']
+            else:
+                # no need to assign charge
+                charge_assigned = True
+
+            for symbol in self.st.elements:
+                atom = Chem.Atom(symbol)
+                # Assign overall non-zero charge to the first matched atom
+                if not charge_assigned and symbol in candidates:
+                    atom.SetFormalCharge(st.charge)
+                    charge_assigned = True
+
+                idx = rdmol.AddAtom(atom)
+
+        # Add coordinates to RDKit molecule
+        conf = Conformer(rdmol.GetNumAtoms())
+        for i, xyz in enumerate(st.xyz):
+            conf.SetAtomPosition(i, xyz)
+        conf_id = rdmol.AddConformer(conf, assignId=True)
+
+        if rdmol.GetNumBonds() == 0:
+            # Resolve bonding info based on coordinates
+            rdDetermineBonds.DetermineBonds(rdmol, charge=st.charge)
 
         if remove_hydrogens:
-            return Chem.RemoveHs(mol)
+            return Chem.RemoveHs(rdmol)
 
-        return mol
+        rdmol_charge = Chem.GetFormalCharge(rdmol)
+        if rdmol_charge != st.charge:
+            raise RuntimeError(
+                f'StructureAdaptor.to_rdkit_mol: Assigned RDKit mol charge ({rdmol_charge}) '
+                f"doesn't match input charge ({st.charge})")
+
+        return rdmol
 
     def to_pyscf_mole(self, basis: str):
         return self.st.to_pyscf_mole(basis)
@@ -140,7 +181,7 @@ class RDKitMolAdaptor(MoleculeAdaptor):
 
     def to_rdkit_mol(self, remove_hydrogens=False):
         if self.rdkit_mol.GetNumBonds() == 0:
-            rdDetermineBonds.DetermineConnectivity(self.rdkit_mol)
+            rdDetermineBonds.DetermineBonds(self.rdkit_mol)
 
         if remove_hydrogens:
             if self.mol_no_H is None:
@@ -192,7 +233,10 @@ class PySCFMoleAdaptor(MoleculeAdaptor):
     def to_rdkit_mol(self, remove_hydrogens=False):
         mol_xyz = self.pyscf_mole.tostring(format="xyz")
         rdkit_mol = Chem.MolFromXYZBlock(mol_xyz)
-
+        logger.warning(
+            'PySCFMoleAdaptor.to_rdkit_mol: Chem.MolFromXYZBlock may not assign charge correctly. '
+            f'original charge: {self.pyscf_mole.charge}, '
+            f'converted RDKit mol charge: {Chem.GetFormalCharge(rdkit_mol)}')
         if rdkit_mol is None:
             raise RuntimeError(
                 "PySCFMoleAdaptor: Failed to convert PySCF molecule to RDKit molecule."

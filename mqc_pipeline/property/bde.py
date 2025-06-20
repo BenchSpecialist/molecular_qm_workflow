@@ -3,12 +3,12 @@ import numpy as np
 
 from rdkit import Chem
 from rdkit.Chem import AllChem
-from rdkit.Chem import rdDetermineBonds
 from rdkit.Chem.rdMolTransforms import GetBondLength
 
 from ..common import Structure, setup_mean_field_obj
 from ..constants import HARTREE_TO_EV
-from ..smiles_util import generate_optimized_rdk_confs
+from ..smiles_util import generate_optimized_rdk_confs, _import_pybel
+from ..adaptors import StructureAdaptor
 from ..util import get_default_logger
 from .keys import DFT_ENERGY_KEY
 
@@ -110,34 +110,26 @@ def calc_fluoride_bond_dissociation_energy(
         st.property[DFT_ENERGY_KEY]) * HARTREE_TO_EV
 
     # Save info of defluorined_st to the original structure
-    st.property['smiles_noF'] = defluorined_st.smiles
-    st.property['charge_noF'] = defluorined_st.charge
-    st.property[f'{DFT_ENERGY_KEY}_noF'] = defluorined_st.property[
-        DFT_ENERGY_KEY]
-    st.property['xyz_noF'] = defluorined_st.to_xyz_block()
+    st.property['_old_f_bonded_atom'] = defluorined_st.metadata[
+        'old_f_bonded_atom']
+    st.property['_smiles_noF'] = defluorined_st.smiles
+    st.property['_charge_noF'] = defluorined_st.charge
+    st.property[f'_e_tot_Eh_noF'] = defluorined_st.property[DFT_ENERGY_KEY]
+    st.property['_xyz_noF'] = defluorined_st.to_xyz_block()
 
     return st
 
 
-def get_defluorined_st(st: Structure) -> Structure:
+def get_defluorined_st(st: Structure,
+                       sulfur_fluorine_bond_only: bool = False) -> Structure:
     """
     Get the defluorined structure by breaking the longest fluorine-containing
     bond in the molecule.
     """
     _msg_header = f"{st.smiles}(id={st.unique_id}) get_defluorined_st: "
-    mol = Chem.MolFromXYZBlock(st.to_xyz_block())
-    if mol is None:
-        raise RuntimeError(_msg_header +
-                           "Failed to create RDKit Mol from Structure.")
 
-    # Assign atomic connectivity using atomic coordinates
-    rdDetermineBonds.DetermineBonds(mol, charge=st.charge)
-
-    if Chem.GetFormalCharge(mol) != st.charge:
-        raise RuntimeError(
-            _msg_header +
-            f"Assigned charge {Chem.GetFormalCharge(mol)} does not match input charge {st.charge}."
-        )
+    adaptor = StructureAdaptor(st)
+    mol = adaptor.to_rdkit_mol(remove_hydrogens=False)
 
     conf = mol.GetConformer(0)
 
@@ -150,17 +142,29 @@ def get_defluorined_st(st: Structure) -> Structure:
             for idx in [bond.GetBeginAtomIdx(),
                         bond.GetEndAtomIdx()])
     ]
+    if sulfur_fluorine_bond_only:
+        # Filter to only include bonds between sulfur and fluorine
+        f_bonds = [
+            (begin_idx, end_idx, length)
+            for begin_idx, end_idx, length in f_bonds if
+            (mol.GetAtomWithIdx(begin_idx).GetAtomicNum() == 16 and mol.
+             GetAtomWithIdx(end_idx).GetAtomicNum() == FLUORINE_ATOM_NUMBER) or
+            (mol.GetAtomWithIdx(end_idx).GetAtomicNum() == 16 and mol.
+             GetAtomWithIdx(begin_idx).GetAtomicNum() == FLUORINE_ATOM_NUMBER)
+        ]
 
     if not f_bonds:
         raise RuntimeError(
             _msg_header +
-            "No fluorine-containing bonds found in the RDKit mol.")
+            f"No fluorine-containing bonds (S-F bond only: {sulfur_fluorine_bond_only}) found in the RDKit mol."
+        )
 
     # Get the longest bond
     begin_idx, end_idx, _ = max(f_bonds, key=lambda x: x[2])
     f_idx, other_idx = (begin_idx, end_idx) if mol.GetAtomWithIdx(
         begin_idx).GetAtomicNum() == FLUORINE_ATOM_NUMBER else (end_idx,
                                                                 begin_idx)
+    f_bonded_atom_symbol = mol.GetAtomWithIdx(other_idx).GetSymbol()
 
     # Remove fluorine atom from RDKit molecule
     editable_mol = Chem.EditableMol(mol)
@@ -194,7 +198,10 @@ def get_defluorined_st(st: Structure) -> Structure:
     # Generate MMFF-optimized conformers for the defluorined molecule
     defluorined_mol, conformer_energies = generate_optimized_rdk_confs(
         defluorined_mol, target_n_conformers=20)
-    if len(conformer_energies) > 0:
+    defluorined_smiles = Chem.MolToSmiles(defluorined_mol,
+                                          isomericSmiles=False,
+                                          canonical=True)
+    if len(conformer_energies) > 0 and defluorined_mol.GetNumConformers() > 0:
         logger.info(
             _msg_header + f'Generated {len(conformer_energies)} conformers. '
             f'Lowest-energy conformer: {conformer_energies[0][1]:.4f} kcal/mol'
@@ -204,11 +211,25 @@ def get_defluorined_st(st: Structure) -> Structure:
         xyz_block = Chem.MolToXYZBlock(defluorined_mol,
                                        confId=conformer_energies[0][0])
     else:
-        # Fallback to the original coordinates if conformer generation fails
-        xyz_block = Chem.MolToXYZBlock(defluorined_mol)
+        # Try openbabel if RDKit failed to generate conformers
+        try:
+            pybel = _import_pybel()
+            obmol = pybel.readstring("smi", defluorined_smiles)
+            obmol.addh()
+            obmol.make3D(forcefield='mmff94', steps=50)
+            obmol.localopt(forcefield='mmff94', steps=500)
+            logger.debug(
+                _msg_header +
+                'Optimized defluorined XYZ with mmff94 using OpenBabel.')
+            xyz_block = obmol.write("xyz")
+        except Exception as e:
+            logger.error(
+                _msg_header +
+                f"Failed to generate XYZ for {defluorined_smiles} using OpenBabel: {e}"
+            )
+            xyz_block = None
 
-    # If defluorined_mol happens to have no conformer
-    if not xyz_block:
+    if not xyz_block or xyz_block.isspace():
         # Try embedding one more time without chirality constraint
         params = AllChem.ETKDGv3()
         params.enforceChirality = False
@@ -217,13 +238,11 @@ def get_defluorined_st(st: Structure) -> Structure:
         else:
             raise RuntimeError(
                 _msg_header +
-                "Failed to convert defluorined RDKit mol to XYZ block (no conformer)."
+                f"Failed to generate XYZ for defluorined molecule {defluorined_smiles}"
             )
 
     defluorined_st = Structure.from_xyz_block(xyz_block=xyz_block)
-    defluorined_st.smiles = Chem.MolToSmiles(defluorined_mol,
-                                             isomericSmiles=False,
-                                             canonical=True)
+    defluorined_st.smiles = defluorined_smiles
 
     # Remove F- from the original structure, so the charge is increased by 1
     defluorined_st.charge = st.charge + 1
@@ -231,5 +250,6 @@ def get_defluorined_st(st: Structure) -> Structure:
     defluorined_st.multiplicity = st.multiplicity
 
     defluorined_st.unique_id = f'{st.unique_id}_defluorined'
+    defluorined_st.metadata['old_f_bonded_atom'] = f_bonded_atom_symbol
 
     return defluorined_st

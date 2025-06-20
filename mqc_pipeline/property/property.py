@@ -273,7 +273,7 @@ def get_properties_main(st: Structure,
                 f"{st.smiles} (id={st.unique_id}): Failed to get isotropic polarizability: {str(e)}"
             )
 
-    if return_fluoride_bde:
+    if return_fluoride_bde and 'F' in st.elements:
         try:
             st, st.metadata['dft_fluoride_bde_time'] = timeit(
                 calc_fluoride_bond_dissociation_energy,

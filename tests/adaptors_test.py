@@ -32,6 +32,43 @@ def test_StructureAdaptor():
     assert pyscf_mole.basis == "sto-3g"
 
 
+def test_StructureAdaptor_to_rdkit_mol():
+    """
+    Covers an edge case "FS(F)(F)F" found on zinc20 dataset where using `Chem.MolFromXYZBlock`
+    and `rdDetermineBonds.DetermineBonds` to get RDKit mol from XYZ gets an unexpected
+    +2 overall molecular charge.
+    """
+    st = Structure(elements=['F', 'S', 'F', 'F', 'F'],
+                   xyz=[[-1.28667578, 0.93860566, 0.66395486],
+                        [0.16922749, 0.41059547, -0.02343354],
+                        [1.54222291, -0.31828686, -0.69721161],
+                        [-0.70176169, -0.40361351, -1.0819961],
+                        [0.27823344, -0.63883451, 1.17232951]],
+                   atomic_numbers=[9, 16, 9, 9, 9],
+                   smiles='FS(F)(F)F',
+                   unique_id='123',
+                   charge=0,
+                   multiplicity=1)
+    st_adaptor = get_adaptor(st)
+    rdmol = st_adaptor.to_rdkit_mol(remove_hydrogens=False)
+    assert Chem.GetFormalCharge(rdmol) == 0
+
+    Structure(elements=['C', 'S', 'O', 'F', 'H', 'H', 'H'],
+              xyz=[[-0.80968252, -0.0393764, -0.02336478],
+                   [0.92037434, 0.02538686, 0.47803707],
+                   [1.66112181, -1.19306369, -0.03603409],
+                   [1.68526824, 1.41279076, -0.09680693],
+                   [-1.00166893, -0.97776898, -0.56486394],
+                   [-1.03001311, 0.84409339, -0.65651269],
+                   [-1.42539983, -0.07206194, 0.89954536]],
+              smiles='C[S@@](=O)F',
+              unique_id='456',
+              charge=0,
+              multiplicity=1)
+    st_adaptor = get_adaptor(st)
+    rdmol = st_adaptor.to_rdkit_mol(remove_hydrogens=False)
+
+
 def test_RDKitMolAdaptor():
     rdkit_mol = Chem.MolFromSmiles('[OH-]')
     Chem.AllChem.EmbedMolecule(rdkit_mol)

@@ -36,7 +36,7 @@ def test_get_defluorined_st(test_st):
     assert defluorined_st.charge == 1
     assert defluorined_st.multiplicity == 1
     assert len(defluorined_st.elements) == len(test_st.elements) - 1
-    assert defluorined_st.smiles == '[O-]C(F)=N[S+2]F'
+    assert defluorined_st.smiles == 'O=C(F)N=[S+]F'
 
 
 @patch('mqc_pipeline.optimize.optimize_by_pyscf')

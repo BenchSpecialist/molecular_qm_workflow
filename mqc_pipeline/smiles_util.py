@@ -205,6 +205,9 @@ def get_canonical_smiles_rdk(input) -> str:
         # Generate bonding information based on coordinates
         # xyz file doesn't have charge info
         rdDetermineBonds.DetermineConnectivity(rdkit_mol)
+        logger.warning(
+            'get_canonical_smiles_rdk: Using `Chem.MolFromXYZFile` with `rdDetermineBonds.DetermineConnectivity` '
+            'may not assign overall charge correctly.')
     else:
         try:
             # Get adaptor based on the input type
@@ -317,9 +320,16 @@ def generate_optimized_rdk_confs(
         pass
 
     # Generate multiple conformers
-    conf_ids = AllChem.EmbedMultipleConfs(mol,
-                                          numConfs=target_n_conformers,
-                                          params=params)
+    try:
+        conf_ids = AllChem.EmbedMultipleConfs(mol,
+                                              numConfs=target_n_conformers,
+                                              params=params)
+    except Exception as e:
+        logger.warning(
+            f"AllChem.EmbedMultipleConfs failed to generate conformers for {smiles}: {str(e)}"
+        )
+        return mol, []
+
     if not conf_ids:
         logger.warning(
             f"generate_optimized_rdk_confs: No conformers generated for {smiles}"
