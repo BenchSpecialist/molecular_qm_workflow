@@ -51,7 +51,7 @@ ELEMENT_DATA = {
 
 def calc_combustion_heat(
         smiles_or_st: str | Structure,
-        mol_heat: float = 0,
+        mol_heat: float = 0.0,
         dft_level: str = 'b3lypg_6311g*') -> tuple[float, str]:
     """
     Calculate the heat of combustion for a molecule given its SMILES string or
@@ -85,7 +85,7 @@ def calc_combustion_heat(
                 logger.error(
                     f'Unsupported element {element} for combustion heat calculation.'
                 )
-                return 0, ''
+                return 0.0, ''
             ele_count[element] += 1
 
     if isinstance(smiles_or_st, Structure):
@@ -95,7 +95,7 @@ def calc_combustion_heat(
                 logger.error(
                     f'Unsupported element {element} for combustion heat calculation.'
                 )
-                return 0, ''
+                return 0.0, ''
             ele_count[element] += 1
 
         if not st.smiles or st.smiles.isspace():
@@ -108,7 +108,7 @@ def calc_combustion_heat(
     halogen_count = sum(ele_count[x] for x in ['F', 'Cl', 'Br', 'I'])
     if halogen_count >= ele_count['H'] and ele_count['H'] != 0:
         logger.info(f'{smiles}: nonflammable material due to halogen.')
-        return 0, ''
+        return 0.0, ''
 
     # H left after halogen formation
     ele_count['H'] -= halogen_count
@@ -119,7 +119,7 @@ def calc_combustion_heat(
 
     if total_oxy_consump <= 0:
         logger.info(f'{smiles}: nonflammable material.')
-        return 0, ''
+        return 0.0, ''
 
     # Calculate heat of products using the pre-converted ev field
     product_heat_sum = sum(
