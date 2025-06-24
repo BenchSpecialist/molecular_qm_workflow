@@ -5,29 +5,31 @@ from typing import Generator
 from ..common import Structure
 from ..structure_io import read_xyz
 from ..util import get_default_logger
+from ..validate import SMILES_COL_NAMES
 
 logger = get_default_logger()
-
-CSV_COL_NAMES = ("smiles", "Smiles", "SMILES")
 
 
 def read_smiles(input_file: str) -> list[str]:
     """
     Read SMILES strings from a single-column txt or csv file.
+
+    :param input_file: Path to the input file (CSV or TXT).
+    :return: List of SMILES strings.
     """
     input_file = Path(input_file)
     if input_file.suffix == '.csv':
-        df = polars.read_csv(input_file)
-
-        if not any(col in df.columns for col in CSV_COL_NAMES):
+        df = polars.read_csv(input_file, comment_prefix='#')
+        if not (smiles_col_name := next(
+            (col for col in SMILES_COL_NAMES if col in df.columns), None)):
             raise ValueError(
-                "CSV file must contain a column named 'smiles', 'Smiles', or 'SMILES'."
+                f"No SMILES column found in CSV file. Allowed colunm names: {', '.join(SMILES_COL_NAMES)}."
             )
-
-        for smiles_col_name in CSV_COL_NAMES:
-            if smiles_col_name in df.columns:
-                smiles_list = df[smiles_col_name].to_list()
-
+        logger.info(f"Reading SMILES strings from column '{smiles_col_name}'.")
+        # filter out None, empty strings.
+        df = df.filter((polars.col(smiles_col_name).is_not_null())
+                       & (polars.col(smiles_col_name) != ''))
+        return df[smiles_col_name].to_list()
     elif input_file.suffix == '.txt':
         smiles_list = [
             line.strip() for line in input_file.read_text().splitlines()
@@ -35,7 +37,7 @@ def read_smiles(input_file: str) -> list[str]:
         ]
     else:
         raise ValueError(
-            "Input file must be a .txt or .csv file containing a single column of smiles strings."
+            "Input file must be a CSV file or TXT file containing a single column of smiles strings."
         )
     return smiles_list
 
@@ -51,7 +53,9 @@ def read_xyz_dir(input_dir: str) -> Generator[Structure, None, None]:
     """
     for xyz_file in Path(input_dir).glob('*.xyz'):
         try:
-            yield read_xyz(xyz_file, parse_comment=True)
+            st = read_xyz(xyz_file, parse_comment=True)
+            st.unique_id = xyz_file.stem  # Use the file name as the unique ID
+            yield st
         except Exception as e:
             logger.error(f"Error parsing {xyz_file}: {e}")
 

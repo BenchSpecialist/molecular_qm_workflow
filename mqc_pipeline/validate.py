@@ -4,15 +4,16 @@ from rdkit import Chem
 
 from .settings import ValidationError
 
-CSV_COL_NAMES = ("smiles", "Smiles", "SMILES")
+SMILES_COL_NAMES = ("smiles", "Smiles", "SMILES", "smile", "SMILE",
+                    "canonical_smile", "smi")
 
 PathLike = str | Path
 
 
-def is_csv_single_column(csv_path: PathLike, first_n_rows: int = 5) -> bool:
+def validate_csv(csv_path: PathLike, first_n_rows: int = 5) -> bool:
     """
-    Checks if the CSV file has only one column and that column is named
-    'smiles', 'Smiles', or 'SMILES'.
+    Validate if the CSV file contains a SMILES string column with an acceptable
+    column names.
 
     :param csv_path: Path to the CSV file.
     :param first_n_rows: Number of rows to check for validation.
@@ -22,17 +23,27 @@ def is_csv_single_column(csv_path: PathLike, first_n_rows: int = 5) -> bool:
     try:
         # Read the header and the first few rows
         df = polars.read_csv(csv_path, n_rows=first_n_rows, comment_prefix='#')
-        columns = df.columns
-        # Check if there's only one column and the column name is supported
-        if len(columns) != 1 or columns[0] not in CSV_COL_NAMES:
-            return False
+        # Check if the supported SMILES column names are present
+        if not (smiles_col_name := next(
+            (col for col in SMILES_COL_NAMES if col in df.columns), None)):
+            raise ValidationError(
+                f"No SMILES column found in CSV file. Acceptable column names: {', '.join(SMILES_COL_NAMES)}."
+            )
+
+        df = df.filter((polars.col(smiles_col_name).is_not_null())
+                       & (polars.col(smiles_col_name) != ''))
+        for smiles in df[smiles_col_name].to_list():
+            if Chem.MolFromSmiles(smiles) is None:
+                raise ValidationError(
+                    f"Invalid SMILES string found in column '{smiles_col_name}': {smiles}"
+                )
+
         # Check if all rows in the first column are non-empty strings
-        col_data = df.select(df.columns[0]).to_series()
-        return col_data.is_not_null().all() and (col_data.str.len_chars()
-                                                 > 0).all()
+        # col_data = df.select(df.columns[0]).to_series()
+        # return col_data.is_not_null().all() and (col_data.str.len_chars()
+        #                                          > 0).all()
     except Exception as e:
-        print(f"Error reading file: {e}")
-        return False
+        raise ValidationError(f"Error reading CSV: {e}")
 
 
 def is_txt_single_column(txt_path: PathLike, first_n_rows: int = 5) -> bool:
@@ -74,10 +85,8 @@ def validate_input(input_file_or_dir: PathLike) -> str:
         if input_file_or_dir.suffix not in ['.txt', '.csv']:
             raise ValidationError("Input file must be a .txt or .csv file.")
         # Check if the file has a single column
-        if input_file_or_dir.suffix == '.csv' and (
-                not is_csv_single_column(input_file_or_dir)):
-            raise ValidationError(
-                "CSV file must contain a single column of smiles strings.")
+        if input_file_or_dir.suffix == '.csv':
+            validate_csv(input_file_or_dir)
 
         if input_file_or_dir.suffix == '.txt' and (
                 not is_txt_single_column(input_file_or_dir)):

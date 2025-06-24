@@ -2,26 +2,41 @@ from pathlib import Path
 
 import pytest
 
-from mqc_pipeline.validate import CSV_COL_NAMES, is_csv_single_column, \
+from mqc_pipeline.validate import SMILES_COL_NAMES, validate_csv, \
     is_txt_single_column, validate_input, ValidationError
 
-
-@pytest.mark.parametrize("col_name", CSV_COL_NAMES)
-def test_is_csv_single_column(col_name, tmp_cwd):
-    csv_path = "test.csv"
-    csv_content = f"""{col_name}
-O=C1OCCO1
-CCOC(=O)OCC
-    """
-    Path(csv_path).write_text(csv_content)
-    assert is_csv_single_column(csv_path, first_n_rows=2) is True
-
-    # a CSV file with multiple columns should return False
-    csv_content = f"""{col_name},other_col
+csv_content_temp = """{COL_NAME},other_col
 O=C1OCCO1,other_data
-    """
+"""
+
+
+def test_validate_csv(tmp_cwd):
+    for col_name in SMILES_COL_NAMES:
+        csv_path = f"test_{col_name}.csv"
+        Path(csv_path).write_text(csv_content_temp.format(COL_NAME=col_name))
+        validate_csv(csv_path, first_n_rows=2)
+
+
+def test_validate_csv_invalid_col(tmp_cwd):
+    # Test with invalid column name
+    csv_path = "test_invalid.csv"
+    Path(csv_path).write_text(csv_content_temp.format(COL_NAME='invalid_col'))
+    with pytest.raises(ValidationError,
+                       match="No SMILES column found in CSV file."):
+        validate_csv(csv_path, first_n_rows=2)
+
+
+def test_validate_csv_invalid_smiles(tmp_cwd):
+    csv_path = "test_invalid.csv"
+    csv_content = """smi,other_col
+O=C1OCCO1,other_data
+ABC,other_data
+"""
     Path(csv_path).write_text(csv_content)
-    assert is_csv_single_column(csv_path, first_n_rows=2) is False
+    with pytest.raises(
+            ValidationError,
+            match="Invalid SMILES string found in column 'smi': ABC"):
+        validate_csv(csv_path)
 
 
 def test_is_txt_single_column(tmp_cwd):
