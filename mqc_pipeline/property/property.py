@@ -8,6 +8,7 @@ from ..util import get_default_logger, timeit
 
 from ..common import Structure, setup_mean_field_obj
 from ..settings import PySCFOption, ESPGridsOption
+from ..constants import HARTREE_TO_EV
 
 from .stability import get_homo_lumo_levels
 from .esp import generate_esp_grids, get_esp_range
@@ -232,7 +233,9 @@ def get_properties_main(st: Structure,
     if return_combustion_heat:
         try:
             st.property['combustion_heat_eV'], _ = calc_combustion_heat(
-                st.smiles, mol_heat=st.property[DFT_ENERGY_KEY])
+                st.smiles,
+                mol_heat_ev=HARTREE_TO_EV * st.property[DFT_ENERGY_KEY],
+                dft_level=pyscf_options._dft_level_str)
         except Exception as e:
             logger.error(
                 f"{st.smiles} (id={st.unique_id}): Failed to calculate combustion heat: {str(e)}"

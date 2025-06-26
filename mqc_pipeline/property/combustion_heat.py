@@ -51,14 +51,14 @@ ELEMENT_DATA = {
 
 def calc_combustion_heat(
         smiles_or_st: str | Structure,
-        mol_heat: float = 0.0,
+        mol_heat_ev: float = 0.0,
         dft_level: str = 'b3lypg_6311g*') -> tuple[float, str]:
     """
     Calculate the heat of combustion for a molecule given its SMILES string or
     a Structure object and DFT energy.
 
     :param smiles_or_st: SMILES string of the molecule or a Structure object
-    :param mol_heat: Energy of the molecule from DFT in eV
+    :param mol_heat_ev: Energy of the molecule from DFT in eV
     :param dft_level: String indicating the DFT level of theory used for the calculation;
                       format: f'{functional}_{basis_set}' where basis_set string has no '-'.
     :return: A tuple containing the heat of combustion in eV and the reaction string
@@ -129,8 +129,8 @@ def calc_combustion_heat(
         if not np.isnan(ELEMENT_DATA[element].product_e_tot_ev))
 
     # Calculate heat of reactants
-    reactant_heat_sum = mol_heat + (total_oxy_consump /
-                                    2.0) * ELEMENT_DATA['O'].product_e_tot_ev
+    reactant_heat_sum = mol_heat_ev + (
+        total_oxy_consump / 2.0) * ELEMENT_DATA['O'].product_e_tot_ev
     combustion_heat = product_heat_sum - reactant_heat_sum
 
     # Build reaction string

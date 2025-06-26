@@ -13,7 +13,7 @@ from mqc_pipeline.test_util import requires_openbabel
 @dataclass(slots=True)
 class Molecule:
     smiles: str
-    mol_heat: float
+    mol_heat_ev: float
     expected_combustion_heat: float
     reaction_str: str
 
@@ -59,7 +59,7 @@ def test_calc_combustion_heat(test_case):
     Test combustion heat calculation starting with SMILES strings.
     """
     combustion_heat, reaction = calc_combustion_heat(test_case.smiles,
-                                                     test_case.mol_heat)
+                                                     test_case.mol_heat_ev)
     assert np.isclose(combustion_heat, test_case.expected_combustion_heat, atol=1e-06), \
         f"Expected {test_case.expected_combustion_heat} but got {combustion_heat} for SMILES: {test_case.smiles}"
     assert reaction == test_case.reaction_str, \
@@ -84,7 +84,7 @@ H           1.54581        0.30417        0.27394
     e_tot = -115.746534 * 27.2114  # in eV
     ref_heat = -8.394417282022914
 
-    combustion_heat, reaction = calc_combustion_heat(st, mol_heat=e_tot)
+    combustion_heat, reaction = calc_combustion_heat(st, mol_heat_ev=e_tot)
     assert np.isclose(combustion_heat, ref_heat, atol=1e-06)
     assert reaction == '1.00 * CO + 1.50 * O2 -> 2.00 * H2O + 1.00 * CO2'
 
@@ -97,7 +97,8 @@ def test_unsupported_elements():
     for inp in [smiles, st]:
         with patch(
                 'mqc_pipeline.property.combustion_heat.logger') as mock_logger:
-            combustion_heat, reaction = calc_combustion_heat(inp, mol_heat=0)
+            combustion_heat, reaction = calc_combustion_heat(inp,
+                                                             mol_heat_ev=0)
             # Check that the error message is logged
             assert call(err_msg) in mock_logger.error.call_args_list
             assert combustion_heat == 0
@@ -111,4 +112,6 @@ def test_unsupported_dft_level():
             match=
             f'Combustion heat calculation for DFT level "{dft_level_unsupported}" is not available.'
     ):
-        calc_combustion_heat("C", mol_heat=0, dft_level=dft_level_unsupported)
+        calc_combustion_heat("C",
+                             mol_heat_ev=0,
+                             dft_level=dft_level_unsupported)
