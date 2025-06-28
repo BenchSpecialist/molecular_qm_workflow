@@ -70,7 +70,7 @@ async def test_request_async(test_atoms):
         assert isinstance(result[0], Atoms)
 
 
-async def _request_async_side_effect(batch, url):
+async def _request_async_side_effect(batch, url, params={}):
     return batch  # Return the batch instead of a future with single item
 
 
