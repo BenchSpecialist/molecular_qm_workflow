@@ -33,7 +33,12 @@ def get_default_logger(log_file="mqc_pipeline.log") -> Any:
     return _loguru_logger
 
 
-def setup_logger(name, log_file=None, level=logging.DEBUG, stream=False):
+def setup_logger(name: str,
+                 log_file: str = None,
+                 level: int = logging.DEBUG,
+                 stream: bool = False,
+                 format: str = '%(message)s',
+                 datefmt: str = None):
     """
     Setup a standard logging.Logger instance.
 
@@ -46,7 +51,7 @@ def setup_logger(name, log_file=None, level=logging.DEBUG, stream=False):
     logger = logging.getLogger(name)
     logger.setLevel(level)
 
-    formatter = logging.Formatter('%(message)s')
+    formatter = logging.Formatter(fmt=format, datefmt=datefmt)
 
     if log_file:
         fh = logging.FileHandler(log_file)

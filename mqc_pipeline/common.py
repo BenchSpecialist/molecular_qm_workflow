@@ -85,12 +85,31 @@ class Structure:
 
     @classmethod
     def from_ase_atoms(cls, ase_atoms: Atoms):
+        smiles = ase_atoms.info.get('smiles', '')
+        unique_id = ase_atoms.info.get('unique_id',
+                                       str(uuid4().int)[:_UNIQUE_KEY_LENGTH])
+        # remove smiles, unique_id from info to avoid duplication
+        metadata = {
+            'chemical_formula': str(ase_atoms.symbols),
+            'ase_atoms_info': {
+                k: v
+                for k, v in ase_atoms.info.items()
+                if k not in ('smiles', 'unique_id')
+            }
+        }
         return cls(elements=ase_atoms.get_chemical_symbols(),
                    xyz=ase_atoms.get_positions(),
-                   atomic_numbers=ase_atoms.get_atomic_numbers().tolist())
+                   atomic_numbers=ase_atoms.get_atomic_numbers().tolist(),
+                   smiles=smiles,
+                   unique_id=unique_id,
+                   metadata=metadata)
 
     def to_ase_atoms(self) -> Atoms:
-        return Atoms(symbols=self.elements, positions=self.xyz)
+        atoms_obj = Atoms(symbols=self.elements, positions=self.xyz)
+        if len(self.smiles) > 0:
+            atoms_obj.info['smiles'] = self.smiles
+        atoms_obj.info['unique_id'] = self.unique_id
+        return atoms_obj
 
     def to_pyscf_mole(self, basis: str) -> 'pyscf.gto.mole.Mole':
         """
@@ -251,7 +270,8 @@ def get_unpaired_electrons(rdk_mol) -> int:
 
     :return: The number of unpaired electrons in the molecule.
     """
-    return sum(atom.GetNumRadicalElectrons() for atom in rdk_mol.GetAtoms())
+    return sum(atom.GetNumRadicalElectrons()
+               for atom in rdk_mol.GetAtoms()) % 2
 
 
 def setup_mean_field_obj(mol, options: PySCFOption):

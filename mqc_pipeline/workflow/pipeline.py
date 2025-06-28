@@ -138,12 +138,14 @@ def run_one_batch(inputs: list[str] | list[Structure],
     # Write molecule-level properties to a file
     mol_prop_out = MOL_PROP_OUTFILE.format(ext=ext)
     write_molecule_property(out_sts, mol_prop_out)
-    logger.info(f"Molecule-level properties written to {mol_prop_out}")
+    logger.info(
+        f"Molecule-level properties written to {os.getcwd()}/{mol_prop_out}")
 
     # Write atom-level properties to a separate file
     atom_prop_out = ATOM_PROP_OUTFILE.format(ext=ext)
     write_atom_property(out_sts, atom_prop_out)
-    logger.info(f"Atom-level properties written to {atom_prop_out}")
+    logger.info(
+        f"Atom-level properties written to {os.getcwd()}/{atom_prop_out}")
 
 
 def run_from_config_settings(settings: PipelineSettings) -> None:
