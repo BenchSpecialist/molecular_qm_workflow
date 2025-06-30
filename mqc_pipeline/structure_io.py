@@ -223,7 +223,10 @@ def read_xyz(xyz_path: str, parse_comment=False) -> Structure:
                          metadata={'from_xyz_file': str(xyz_path)})
 
 
-def write_molecule_property(st_or_sts: StructureType, filename: str):
+def write_molecule_property(
+        st_or_sts: StructureType,
+        filename: str,
+        additional_mol_keys: list[str] = ['multiplicity', 'charge']):
     """
     Write the molecule-level properties structure properties of one or multiple
     Structure objects to a CSV or Parquet file.
@@ -234,7 +237,7 @@ def write_molecule_property(st_or_sts: StructureType, filename: str):
     sts = [st_or_sts] if isinstance(st_or_sts, Structure) else st_or_sts
 
     # One dict per structure
-    _mol_keys = [*SHARED_KEYS, 'multiplicity', 'charge']
+    _mol_keys = [*SHARED_KEYS, *additional_mol_keys]
     data = [
         {**{key: getattr(st, key) for key in _mol_keys}, **st.property}
         for st in sts

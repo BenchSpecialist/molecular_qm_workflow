@@ -13,7 +13,7 @@ from .util import get_default_logger
 
 logger = get_default_logger()
 
-URL = os.environ.get("INFERENCE_URL", 'http://localhost:8003/v1/infer')
+URL = os.environ.get("INFERENCE_URL", 'http://localhost:8000/v1/infer')
 
 FAILED_INPUTS_FILE = "FAILED_INPUTS.txt"
 
@@ -93,7 +93,7 @@ def optimize_sts_by_triton(sts: list[Structure],
     opt_sts = asyncio.run(optimize_sts_async(sts, batch_size))
 
     if failed_sts := [(index, st) for index, st in enumerate(opt_sts)
-                      if st.metadata['ase_atoms_info']['converged'] == False]:
+                      if st.metadata['ase_converged'] == False]:
         with open(FAILED_INPUTS_FILE, 'a') as f:
             f.write("\n".join([
                 f"{st.smiles} ({st.metadata.get('chemical_formula')}): batch optimization failed to converge."
@@ -106,7 +106,6 @@ def optimize_sts_by_triton(sts: list[Structure],
 
     # Remove un-converged structures from output
     converged_sts = [
-        st for st in opt_sts
-        if st.metadata['ase_atoms_info']['converged'] == True
+        st for st in opt_sts if st.metadata['ase_converged'] == True
     ]
     return converged_sts

@@ -5,12 +5,9 @@ from pathlib import Path
 
 from mqc_pipeline.common import Structure
 from mqc_pipeline.constants import ELEMENT_TO_ATOMIC_NUMBER
-from mqc_pipeline.util import setup_logger
+from mqc_pipeline.util import get_default_logger
 
-logger = setup_logger(__name__,
-                      log_file='aimnet2_inference.log',
-                      format='%(asctime)s - %(levelname)s - %(message)s',
-                      datefmt='%Y-%m-%d %H:%M:%S')
+logger = get_default_logger()
 
 from .aimnet2 import AIMNet2
 from .config import load_yaml, build_module
@@ -52,8 +49,9 @@ def get_model():
     state_dict = torch.load(AIMNET_PROP_MODEL_PT,
                             map_location=_device,
                             weights_only=True)
-    logger.info(f'Loaded model state dict from {AIMNET_PROP_MODEL_PT}')
-    logger.info(f"{len(state_dict)} parameters")
+    logger.info(
+        f'Loaded model state dict from {AIMNET_PROP_MODEL_PT}, {len(state_dict)} parameters'
+    )
 
     # Load state dict into model
     try:
@@ -219,7 +217,7 @@ def run(
     add_properties_to_sts(batch_output, sts)
 
     logger.info(
-        f"Processed {len(sts)} structures in {time.perf_counter() - t_start:.2f} seconds"
+        f"AIMNET property inference: {len(sts)} structures in {time.perf_counter() - t_start:.2f} seconds"
     )
 
     return sts

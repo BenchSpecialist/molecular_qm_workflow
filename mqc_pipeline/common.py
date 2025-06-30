@@ -7,7 +7,7 @@ This module contains:
 - Utility functions:
     - calculation of unpaired electrons from a RDKit molecule.
 """
-
+import json
 import numpy as np
 from uuid import uuid4
 from typing import Optional
@@ -85,24 +85,34 @@ class Structure:
 
     @classmethod
     def from_ase_atoms(cls, ase_atoms: Atoms):
+        # `ase_atoms.info` dict may contain:
+        # energy, forces, stress, virials, dipole, nsteps, converged, fmax
         smiles = ase_atoms.info.get('smiles', '')
         unique_id = ase_atoms.info.get('unique_id',
                                        str(uuid4().int)[:_UNIQUE_KEY_LENGTH])
         # remove smiles, unique_id from info to avoid duplication
         metadata = {
-            'chemical_formula': str(ase_atoms.symbols),
-            'ase_atoms_info': {
-                k: v
-                for k, v in ase_atoms.info.items()
-                if k not in ('smiles', 'unique_id')
+            # 'chemical_formula': str(ase_atoms.symbols),
+            **{
+                f'ase_{k}': v
+                for k, v in ase_atoms.info.items() if k in ('nsteps', 'converged', 'fmax')
             }
         }
-        return cls(elements=ase_atoms.get_chemical_symbols(),
-                   xyz=ase_atoms.get_positions(),
-                   atomic_numbers=ase_atoms.get_atomic_numbers().tolist(),
-                   smiles=smiles,
-                   unique_id=unique_id,
-                   metadata=metadata)
+        st = cls(elements=ase_atoms.get_chemical_symbols(),
+                 xyz=ase_atoms.get_positions(),
+                 atomic_numbers=ase_atoms.get_atomic_numbers().tolist(),
+                 smiles=smiles,
+                 unique_id=unique_id,
+                 metadata=metadata)
+
+        if energy := ase_atoms.info.get('energy'):
+            st.property['ase_energy_ev'] = float(energy)
+        if (grad_arr := ase_atoms.info.get('forces')) is not None:
+            st.save_gradients(gradients_arr=grad_arr, prop_key='ase_forces')
+        if (dip := ase_atoms.info.get('dipole')) is not None:
+            st.property['ase_dipole'] = json.dumps(dip[0].tolist())
+
+        return st
 
     def to_ase_atoms(self) -> Atoms:
         atoms_obj = Atoms(symbols=self.elements, positions=self.xyz)
