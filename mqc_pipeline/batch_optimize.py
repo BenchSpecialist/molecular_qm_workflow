@@ -78,7 +78,7 @@ async def optimize_sts_async(sts: list[Structure],
 
     time_taken = time.perf_counter() - t_start
     logger.info(
-        f'TritonInference: Relaxed {len(sts)} structures in {time_taken:.4f} seconds.'
+        f'TritonInference: Relaxed {len(sts)} structures in {time_taken:.2f} seconds.'
     )
     opt_sts = [Structure.from_ase_atoms(atoms) for atoms in relaxed_atoms_objs]
     return opt_sts

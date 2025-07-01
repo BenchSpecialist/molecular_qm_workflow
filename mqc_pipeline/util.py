@@ -122,3 +122,24 @@ def change_dir(new_dir: str):
         yield
     finally:
         os.chdir(old_dir)
+
+
+def get_optimal_workers(total_inputs: int, min_items_per_worker: int,
+                        cpu_count: int) -> int:
+    """
+    Calculate optimal number of worker processes based on workload and CPU count.
+
+    :param total_inputs: Total number of inputs to process
+    :param min_items_per_worker: Minimum inputs per worker for efficient processing
+    :param cpu_count: Number of CPU cores available
+
+    :return: Recommended number of worker processes
+    """
+    # Calculate workers needed based on minimum batch size
+    workers_by_batch = max(1, total_inputs // min_items_per_worker)
+
+    # Limit by available CPUs (N + 4 rule)
+    workers_by_cpu = cpu_count + 4
+
+    # Take the minimum of both constraints
+    return min(workers_by_batch, workers_by_cpu)

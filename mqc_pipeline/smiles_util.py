@@ -2,6 +2,7 @@ import time
 import numpy as np
 from pathlib import Path
 from functools import lru_cache
+from multiprocessing import Pool
 
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -11,7 +12,7 @@ from rdkit.Chem.rdMolTransforms import GetBondLength
 from .constants import chemical_symbols
 from .common import Structure, get_unpaired_electrons
 from .adaptors import get_adaptor
-from .util import get_default_logger
+from .util import get_default_logger, get_optimal_workers
 
 logger = get_default_logger()
 
@@ -30,17 +31,79 @@ def smiles_to_structure(smiles: str,
 
     :return: A Structure object containing the elements, 3D coordinates, and SMILES string.
     """
+    method = method.lower()
+    if method not in ["rdkit", "openbabel"]:
+        raise ValueError(f'smiles_to_structure: "{method}" is not supported. '
+                         'Supported methods: "rdkit", "openbabel".')
+
     if method == "rdkit":
         return smiles_to_structure_rdk(smiles,
                                        max_attempts=kwargs.get(
                                            "max_attempts",
                                            _RDKIT_MAX_ATTEMPTS))
-    elif method == "openbabel":
+    if method == "openbabel":
         return smiles_to_structure_pybel(smiles,
                                          forcefield=kwargs.get(
                                              "forcefield", _PYBEL_FORCEFILED))
-    else:
-        raise ValueError(f'smiles_to_structure: "{method}" is not supported.')
+
+
+def one_smiles_to_st(smiles: str) -> Structure:
+    """
+    Convert a single SMILES string to a 3D structure with fallback: try RDKit first,
+    then OpenBabel with forcefield if RDKit fails, if both fail, log the SMILES string
+    and the error message to the file..
+    """
+    try:
+        st = smiles_to_structure_rdk(smiles)
+        return st
+    except Exception as e:
+        logger.warning(
+            f"{smiles}: Failed to generate 3D structure using RDKit. Trying OpenBabel."
+        )
+    try:
+        st = smiles_to_structure_pybel(smiles)
+        return st
+    except Exception as e:
+        with open("FAILED_INPUTS.txt", 'a') as fp:
+            fp.write(f'{smiles}: pybel - {str(e)}\n')
+        logger.error(
+            f"{smiles}: Failed to generate 3D structure using OpenBabel - {str(e)}."
+        )
+
+
+def smiles_to_structure_batch(smiles_list: list[str],
+                              num_cpus: int = 16,
+                              min_batch_size: int = 1000) -> list[Structure]:
+    """
+    Convert a batch of SMILES strings to 3D structures using parallel processing.
+
+    :param smiles_list: List of SMILES strings to convert
+    :param num_cpus: Number of CPU cores to use for parallel processing
+    :param min_batch_size: Minimum number of SMILES per worker to process
+
+    :return: List of Structure objects containing the 3D coordinates and metadata
+    """
+    if not smiles_list:
+        return []
+
+    max_workers = get_optimal_workers(total_inputs=len(smiles_list),
+                                      min_items_per_worker=min_batch_size,
+                                      cpu_count=num_cpus)
+
+    t_start = time.perf_counter()
+    with Pool(processes=max_workers) as pool:
+        try:
+            # Use starmap if we need to pass multiple arguments
+            results = pool.map(one_smiles_to_st, smiles_list)
+            logger.info(
+                f"smiles_to_structure_batch ({max_workers} workers): {time.perf_counter() - t_start:.2f} seconds "
+                f"to embed {len(smiles_list)} SMILES strings.")
+            # filter out None results (failed conversions)
+            return [x for x in results if x is not None]
+        except Exception as e:
+            logger.error(
+                f"smiles_to_structure_batch: {len(smiles_list)} SMILES, error - {str(e)}"
+            )
 
 
 @lru_cache(maxsize=1)
