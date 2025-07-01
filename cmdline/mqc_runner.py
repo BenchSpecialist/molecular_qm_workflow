@@ -274,7 +274,10 @@ def main():
         return
 
     # Import here to speed up the startup time of the script
-    from mqc_pipeline.workflow.io import read_smiles, read_xyz_dir
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        from mqc_pipeline.workflow.io import read_smiles, read_xyz_dir
 
     input_path = Path(settings.input_file_or_dir)
     _cached_config_path = input_path.parent.resolve() / _CACHED_CONFIG
