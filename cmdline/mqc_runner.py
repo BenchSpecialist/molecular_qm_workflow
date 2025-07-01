@@ -23,6 +23,7 @@ import shutil
 import pprint
 import pickle
 import argparse
+import warnings
 import subprocess
 import polars
 from pathlib import Path
@@ -171,7 +172,9 @@ def main():
         if not atom_csv.exists():
             raise SystemExit(f"atom_property.csv not found in {Path.cwd()}.")
 
-        from mqc_pipeline.workflow.io import write_xyz_dir_from_csv
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            from mqc_pipeline.workflow.io import write_xyz_dir_from_csv
 
         out_xyz_dir = Path(args.extract_xyz).resolve()
         num_xyz = write_xyz_dir_from_csv(csv_path=atom_csv,
@@ -274,7 +277,6 @@ def main():
         return
 
     # Import here to speed up the startup time of the script
-    import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         from mqc_pipeline.workflow.io import read_smiles, read_xyz_dir

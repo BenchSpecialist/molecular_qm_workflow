@@ -18,6 +18,10 @@ micromamba activate $ENV_DIR
 # CUDA Version: 12.4 for fluidstack cluster
 micromamba install -y pytorch pytorch-cuda=12.4 -c pytorch -c nvidia
 micromamba install -y pytorch-cluster -c pyg
+# pip install --force-reinstall --no-deps torch-cluster==1.6.3 --ignore-installed
+# TORCH_VERSION='2.4.1'
+# CUDA_VERSION='cu124'
+# pip install torch-cluster -f https://data.pyg.org/whl/torch-${TORCH_VERSION}+${CUDA_VERSION}.html
 
 # Clone and install aimnet2calc
 echo "Cloning and installing aimnet2calc..."
