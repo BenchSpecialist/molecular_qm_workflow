@@ -40,6 +40,25 @@ class TritonPipelineSettings(BaseModel):
         description="Method to compute molecular properties.\n"
         f"# Supported methods: {', '.join(SUPPORTED_PROP_METHODS)}")
 
+    inference_max_batch_size: int = Field(
+        default=2048,
+        description=
+        "Maximum number of structures in batch for parallel property inference."
+    )
+
+    inference_mo_range: tuple[float, float] = Field(
+        default=(-20.0, 20.0),
+        description=
+        "Range for molecular orbital energies in property inference.\n"
+        "# Outliers will be clipped to this range. Set to null to disable clipping."
+    )
+
+    inference_esp_range: tuple[float, float] = Field(
+        default=(-20.0, 20.0),
+        description="Range for electrostatic potential in property inference.\n"
+        "# Outliers will be clipped to this range. Set to null to disable clipping."
+    )
+
     dft_basis: str = Field(default='6311g*',
                            description="Basis set for PySCF calculations")
     dft_functional: str = Field(
@@ -200,10 +219,12 @@ def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
 
     # Get properties for optimized structures (ML inference or DFT)
     if settings.property_method == METHOD_AIMNet2:
-        out_sts = property_inference.run(
+        out_sts = property_inference.run_parallel(
             opt_sts,
-            mo_range=property_inference.MO_CLIP_RANGE,
-            esp_range=property_inference.ESP_CLIP_RANGE)
+            mo_range=settings.inference_mo_range,
+            esp_range=settings.inference_esp_range,
+            max_batch_size=settings.inference_max_batch_size,
+            num_cpu_workers=num_cpus)
 
     elif settings.property_method == METHOD_DFT:
         pyscf_options = settings.to_pyscf_options()
@@ -222,7 +243,7 @@ def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
     )
 
     mol_prop_outfile = Path('molecule_property.csv').resolve()
-    atom_prop_outfile = Path('atom_property.csv').resolve()
+    atom_prop_outfile = Path('atom_property.parquet').resolve()
     write_molecule_property(out_sts,
                             filename=str(mol_prop_outfile),
                             additional_mol_keys=[])

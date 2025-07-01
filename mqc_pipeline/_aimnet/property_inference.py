@@ -1,7 +1,11 @@
-import numpy as np
-import torch
+import os
 import time
+import torch
+import numpy as np
 from pathlib import Path
+from filelock import FileLock
+from functools import lru_cache
+from collections import namedtuple
 
 from mqc_pipeline.common import Structure
 from mqc_pipeline.constants import ELEMENT_TO_ATOMIC_NUMBER
@@ -12,22 +16,43 @@ logger = get_default_logger()
 from .aimnet2 import AIMNet2
 from .config import load_yaml, build_module
 
+# merged_model_181.pt contains 175 parameters
 AIMNET_PROP_MODEL_PT = Path(
     '/mnt/filesystem/dev_renkeh/aimnet-model-zoo/merged_model_181.pt')
 AIMNET_MODEL_YAML = Path(__file__).parent / 'aimnet2.yaml'
 
-_device_str = "cuda" if torch.cuda.is_available() else "cpu"
-_device = torch.device(_device_str)
+TOTAL_CPUS_PER_NODE = 128
+# `torch.cuda.device_count()` gives 0 since when launching cmdline API on login node
+AVAILABLE_GPUS = int(os.environ.get('SLURM_GPUS_ON_NODE', '0'))
 
 ESP_CLIP_RANGE = (-20.0, 20.0)
 MO_CLIP_RANGE = (-20.0, 20.0)
 
+BatchInfo = namedtuple('BatchInfo', ['n_atoms_min', 'n_atoms_max'])
 
-def get_model():
+BATCH_INFO_FILE = Path("prop_batch_info.csv")
+
+
+def _log(msg: str, file: Path = BATCH_INFO_FILE) -> None:
+    """
+    Write message to file with process-safe locking.
+    """
+    with FileLock(f"{file}.lock"):
+        with open(file, 'a') as fp:
+            fp.write(f'{msg}\n')
+            fp.flush()  # write content immediately
+
+
+@lru_cache(maxsize=1)
+def get_model_for_device(device_id: int = 0):
+    """Get model for specific GPU with caching"""
+    device = torch.device(
+        f"cuda:{device_id}" if torch.cuda.is_available() else "cpu")
+
+    # Initialize model
     if AIMNET_MODEL_YAML.exists():
         config = load_yaml(config=AIMNET_MODEL_YAML)
         model = build_module(config)
-        logger.info(f"Created AIMNet2 model from {AIMNET_MODEL_YAML}")
     else:
         aev_params = {
             "rc_s": 5.0,
@@ -42,16 +67,26 @@ def get_model():
                         aim_size=256,
                         outputs={})
         logger.warning(
-            f"YAML file not found, created AIMNet2 model with default parameters"
+            f"{AIMNET_MODEL_YAML} not exist, created AIMNet2 model with default parameters"
         )
 
-    # Load state dict
-    state_dict = torch.load(AIMNET_PROP_MODEL_PT,
-                            map_location=_device,
-                            weights_only=True)
-    logger.info(
-        f'Loaded model state dict from {AIMNET_PROP_MODEL_PT}, {len(state_dict)} parameters'
-    )
+    # Get model weight
+    try:
+        state_dict = torch.load(AIMNET_PROP_MODEL_PT,
+                                map_location=device,
+                                weights_only=True)
+    except Exception as e:
+        try:
+            state_dict = torch.load(AIMNET_PROP_MODEL_PT,
+                                    map_location=device,
+                                    weights_only=False)
+            logger.debug(
+                f'Loaded model weights(weights_only=False) from {AIMNET_PROP_MODEL_PT}, {len(state_dict)} parameters'
+            )
+        except Exception as e:
+            err_msg = f"Failed to load model weights from {AIMNET_PROP_MODEL_PT}: {str(e)}"
+            logger.error(err_msg)
+            raise RuntimeError(err_msg)
 
     # Load state dict into model
     try:
@@ -65,37 +100,33 @@ def get_model():
         )
 
     # Move model to device
-    model = model.to(_device)
+    model = model.to(device)
     return model
 
 
-def sts_to_batch_input(sts: list[Structure]) -> dict[str, torch.Tensor]:
+def sts_to_batch_input(
+        sts: list[Structure],
+        device: torch.device) -> tuple[dict[str, torch.Tensor], BatchInfo]:
     """
     Convert a list of Structure objects to batch input for AIMNet2 model.
     Ideally, all input structures should have the same number of atoms,
     so there's no redundant data due to padding.
 
     :param sts: List of Structure objects to convert
-    :return: Dictionary containing batched tensors ready for model input
+    :param device: Device to which the tensors should be moved (e.g., 'cuda:0' or 'cpu')
+    :return: Tuple of a dictionary containing batched tensors ready for model input
         - coord: Coordinates tensor of shape (num_mols, n_atoms, 3)
         - numbers: Atomic numbers tensor of shape (num_mols, n_atoms)
         - charge: Molecular charges tensor of shape (num_mols,)
         - mult: Multiplicities tensor of shape (num_mols,)
+        and BatchInfo namedtuple with batch statistics
     """
     # Get max number of atoms for padding
-    n_atoms_distribution = [len(st.elements) for st in sts]
-    if len(set(n_atoms_distribution)) > 1:
-        logger.warning(
-            "sts_to_batch_input: Input structures have varying number of atoms. Padding will be applied."
-        )
-        logger.info(
-            f'sts_to_batch_input: n_atoms_min={min(n_atoms_distribution)} n_atoms_max={max(n_atoms_distribution)}'
-        )
-    n_atoms = max(n_atoms_distribution)
     num_mols = len(sts)
-    logger.info(
-        f"sts_to_batch_input: Coordinates tensor shape: ({num_mols}, {n_atoms}, 3)"
-    )
+    n_atoms_distribution = [len(st.elements) for st in sts]
+    n_atoms = max(n_atoms_distribution)
+    info = BatchInfo(n_atoms_min=min(n_atoms_distribution),
+                     n_atoms_max=max(n_atoms_distribution))
 
     # Initialize arrays with padding
     coords = np.zeros((num_mols, n_atoms, 3))
@@ -123,13 +154,13 @@ def sts_to_batch_input(sts: list[Structure]) -> dict[str, torch.Tensor]:
 
     # Convert to PyTorch tensors
     batch_input = {
-        "coord": torch.tensor(coords, dtype=torch.float32, device=_device),
-        "numbers": torch.tensor(atomic_nums, dtype=torch.long, device=_device),
-        "charge": torch.tensor(charges, dtype=torch.float32, device=_device),
-        "mult": torch.tensor(mults, dtype=torch.float32, device=_device)
+        "coord": torch.tensor(coords, dtype=torch.float32, device=device),
+        "numbers": torch.tensor(atomic_nums, dtype=torch.long, device=device),
+        "charge": torch.tensor(charges, dtype=torch.float32, device=device),
+        "mult": torch.tensor(mults, dtype=torch.float32, device=device)
     }
 
-    return batch_input
+    return batch_input, info
 
 
 # Keys in batch_output: 'coord', 'numbers', 'charge', 'mult',
@@ -146,7 +177,7 @@ def add_properties_to_sts(batch_output: dict[str, torch.Tensor],
 
     properties = ['homo', 'lumo', 'esp_min', 'esp_max']
     other = ['energy', 'numbers', '_natom']
-    if _device_str == "cuda":
+    if torch.cuda.is_available():
         filtered_output = {
             k: v.cpu().numpy().tolist()
             for k, v in batch_output.items() if k in properties + other
@@ -190,22 +221,30 @@ def apply_clipping(values: torch.Tensor, range: tuple[float,
     return clipped_values
 
 
-def run(
-    sts: list[Structure] | Structure,
+def run_one_batch(
+    device_id: int,
+    sts: list[Structure],
+    batch_id: int | None = None,
     mo_range: tuple[float, float] | None = None,
     esp_range: tuple[float, float] | None = None,
 ) -> list[Structure]:
-    if isinstance(sts, Structure):
-        sts = [sts]
+    """Process a batch of structures on specified GPU"""
 
-    aimnet_model = get_model()
-    batch_input = sts_to_batch_input(sts)
+    device = torch.device(
+        f"cuda:{device_id}" if torch.cuda.is_available() else "cpu")
 
+    # Get model for this device
+    aimnet_model = get_model_for_device(device_id)
+
+    # Convert structures to batch input
+    batch_input, info = sts_to_batch_input(sts, device=device)
+
+    # Run inference
     t_start = time.perf_counter()
-
     with torch.no_grad():
         batch_output = aimnet_model(batch_input)
 
+    # Apply clipping if needed
     if mo_range:
         for key in ['homo', 'lumo']:
             batch_output[key] = apply_clipping(batch_output[key], mo_range)
@@ -213,13 +252,98 @@ def run(
         for key in ['esp_min', 'esp_max']:
             batch_output[key] = apply_clipping(batch_output[key], esp_range)
 
-    if _device_str == "cuda":
+    if torch.cuda.is_available():
         torch.cuda.synchronize()
 
     add_properties_to_sts(batch_output, sts)
 
-    logger.info(
-        f"AIMNET property inference: {len(sts)} structures in {time.perf_counter() - t_start:.2f} seconds"
+    _log(
+        f'{batch_id},{str(device)},{len(sts)},{info.n_atoms_min},{info.n_atoms_max},{time.perf_counter() - t_start:.2f}'
     )
 
     return sts
+
+
+def run_parallel(
+        sts: list[Structure] | Structure,
+        mo_range: tuple[float, float] | None = None,
+        esp_range: tuple[float, float] | None = None,
+        max_batch_size: int = 4096,
+        num_cpu_workers: int = TOTAL_CPUS_PER_NODE) -> list[Structure]:
+    """
+    Run inference in parallel across multiple GPUs or CPUs.
+
+    :param sts: List of Structure objects or a single Structure
+    :param mo_range: Optional tuple specifying (min, max) clipping range for molecular orbital properties
+    :param esp_range: Optional tuple specifying (min, max) clipping range for ESP properties
+    :param max_batch_size: Batch size limit for structures
+    :param num_cpu_workers: Number of CPU workers to use when no GPUs are available
+    :return: List of structures with properties added
+    """
+    # Convert single structure to list if needed
+    if isinstance(sts, Structure):
+        sts = [sts]
+
+    # Return early for empty input
+    if not sts:
+        return sts
+
+    t_start = time.perf_counter()
+
+    # Remove exiting BATCH_INFO_FILE
+    if BATCH_INFO_FILE.exists():
+        BATCH_INFO_FILE.unlink()
+    # Add header to BATCH_INFO_FILE
+    _log(msg='batch_id,device,num_mols,n_atoms_min,n_atoms_max,time')
+
+    if torch.cuda.is_available():
+        # GPU processing - split structures across available GPUs
+        batch_size = (len(sts) + AVAILABLE_GPUS - 1) // AVAILABLE_GPUS
+        batch_size = min(batch_size, max_batch_size)
+        batches = [
+            sts[i:i + batch_size] for i in range(0, len(sts), batch_size)
+        ]
+
+        logger.info(
+            f"Parallel inference on {AVAILABLE_GPUS} GPUs with {len(batches)} batches"
+        )
+
+        # Use multiprocessing to run on multiple GPUs
+        ctx = torch.multiprocessing.get_context("spawn")
+        with ctx.Pool(processes=AVAILABLE_GPUS) as pool:
+            results = pool.starmap(
+                run_one_batch,
+                [(i % AVAILABLE_GPUS, batch, i, mo_range, esp_range)
+                 for i, batch in enumerate(batches)])
+    else:
+        # CPU processing - use multiple CPU workers
+        num_cpu_workers = min(num_cpu_workers, len(sts))
+
+        # Split structures across CPU workers
+        batch_size = (len(sts) + num_cpu_workers - 1) // num_cpu_workers
+        batch_size = min(batch_size, max_batch_size)
+        batches = [
+            sts[i:i + batch_size] for i in range(0, len(sts), batch_size)
+        ]
+
+        logger.info(
+            f"Parallel inference on {num_cpu_workers} CPUs with {len(batches)} batches ({[len(batch) for batch in batches]})"
+        )
+
+        # Use multiprocessing to run on multiple CPU cores
+        with torch.multiprocessing.Pool(processes=num_cpu_workers) as pool:
+            results = pool.starmap(run_one_batch,
+                                   [(0, batch, batch_id, mo_range, esp_range)
+                                    for batch_id, batch in enumerate(batches)])
+
+    # Flatten results
+    out_sts = [st for batch in results for st in batch]
+
+    # Verify all structures were processed
+    assert len(out_sts) == len(sts), "Not all molecules were processed"
+
+    logger.info(
+        f"Property inference: {len(sts)} molecules in {time.perf_counter() - t_start:.2f} seconds"
+    )
+
+    return out_sts
