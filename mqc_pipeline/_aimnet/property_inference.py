@@ -88,8 +88,10 @@ def sts_to_batch_input(sts: list[Structure]) -> dict[str, torch.Tensor]:
         logger.warning(
             "sts_to_batch_input: Input structures have varying number of atoms. Padding will be applied."
         )
-        logger.info(f"Atom counts per molecule: {n_atoms_distribution}")
-    n_atoms = max(len(st.elements) for st in sts)
+        logger.info(
+            f'sts_to_batch_input: n_atoms_min={min(n_atoms_distribution)} n_atoms_max={max(n_atoms_distribution)}'
+        )
+    n_atoms = max(n_atoms_distribution)
     num_mols = len(sts)
     logger.info(
         f"sts_to_batch_input: Coordinates tensor shape: ({num_mols}, {n_atoms}, 3)"

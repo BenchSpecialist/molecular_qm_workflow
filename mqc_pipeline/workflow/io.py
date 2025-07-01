@@ -35,9 +35,17 @@ def read_smiles(input_file: str) -> list[str]:
             line.strip() for line in input_file.read_text().splitlines()
             if line.strip() and not line.startswith('#')
         ]
+    elif input_file.suffix == '.pkl':
+        import pickle
+        with open(input_file, 'rb') as f:
+            smiles_list = pickle.load(f)
+        if not isinstance(smiles_list, list) or not all(
+                isinstance(smiles, str) for smiles in smiles_list):
+            raise ValueError(
+                "Pickle file must contain a list of SMILES strings.")
     else:
         raise ValueError(
-            "Input file must be a CSV file or TXT file containing a single column of smiles strings."
+            f"Unsupported file format: {input_file.suffix}. Only .csv, .txt, and .pkl files are supported."
         )
     return smiles_list
 

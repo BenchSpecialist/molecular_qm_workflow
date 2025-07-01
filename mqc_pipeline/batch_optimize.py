@@ -96,12 +96,12 @@ def optimize_sts_by_triton(sts: list[Structure],
                       if st.metadata['ase_converged'] == False]:
         with open(FAILED_INPUTS_FILE, 'a') as f:
             f.write("\n".join([
-                f"{st.smiles} ({st.metadata.get('chemical_formula')}): batch optimization failed to converge."
+                f"{st.smiles}: batch optimization failed to converge."
                 for _, st in failed_sts
             ]))
 
         logger.warning(
-            f'TritonInference: {len(failed_sts)} structures failed to converge, '
+            f'TritonInference: {len(failed_sts)} structures failed to converge'
         )
 
     # Remove un-converged structures from output

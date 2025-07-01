@@ -12,7 +12,7 @@ from rdkit.Chem.rdMolTransforms import GetBondLength
 from .constants import chemical_symbols
 from .common import Structure, get_unpaired_electrons
 from .adaptors import get_adaptor
-from .util import get_default_logger, get_optimal_workers
+from .util import get_default_logger
 
 logger = get_default_logger()
 
@@ -56,10 +56,8 @@ def one_smiles_to_st(smiles: str) -> Structure:
     try:
         st = smiles_to_structure_rdk(smiles)
         return st
-    except Exception as e:
-        logger.warning(
-            f"{smiles}: Failed to generate 3D structure using RDKit. Trying OpenBabel."
-        )
+    except Exception as rdk_e:
+        pass
     try:
         st = smiles_to_structure_pybel(smiles)
         return st
@@ -67,36 +65,32 @@ def one_smiles_to_st(smiles: str) -> Structure:
         with open("FAILED_INPUTS.txt", 'a') as fp:
             fp.write(f'{smiles}: pybel - {str(e)}\n')
         logger.error(
-            f"{smiles}: Failed to generate 3D structure using OpenBabel - {str(e)}."
-        )
+            f"{smiles}: Failed to generate 3D structure using RDKit ({str(rdk_e)}) "
+            f"and OpenBabel ({str(e)}).")
+        return None  # Explicitly return None when both methods fail
 
 
 def smiles_to_structure_batch(smiles_list: list[str],
-                              num_cpus: int = 16,
-                              min_batch_size: int = 1000) -> list[Structure]:
+                              num_workers: int) -> list[Structure]:
     """
     Convert a batch of SMILES strings to 3D structures using parallel processing.
 
     :param smiles_list: List of SMILES strings to convert
-    :param num_cpus: Number of CPU cores to use for parallel processing
-    :param min_batch_size: Minimum number of SMILES per worker to process
+    :param num_workers: Number of worker processes to use for parallel processing.
 
     :return: List of Structure objects containing the 3D coordinates and metadata
     """
     if not smiles_list:
         return []
 
-    max_workers = get_optimal_workers(total_inputs=len(smiles_list),
-                                      min_items_per_worker=min_batch_size,
-                                      cpu_count=num_cpus)
-
     t_start = time.perf_counter()
-    with Pool(processes=max_workers) as pool:
+    logger.info(f"smiles_to_structure_batch: {num_workers} workers")
+    with Pool(processes=num_workers) as pool:
         try:
             # Use starmap if we need to pass multiple arguments
             results = pool.map(one_smiles_to_st, smiles_list)
             logger.info(
-                f"smiles_to_structure_batch ({max_workers} workers): {time.perf_counter() - t_start:.2f} seconds "
+                f"smiles_to_structure_batch: {time.perf_counter() - t_start:.2f} seconds "
                 f"to embed {len(smiles_list)} SMILES strings.")
             # filter out None results (failed conversions)
             return [x for x in results if x is not None]
@@ -153,7 +147,7 @@ def smiles_to_structure_pybel(smiles: str,
         for bond in pybel.ob.OBMolBondIter(ob_mol)
     ]
     if any(distance < 0.5 or distance > 3.0 for distance in bond_distances):
-        bd_err_msg = f"{smiles}: Unphysical bond distances in the OpenBabel conformer.\n{bond_distances}"
+        bd_err_msg = f"{smiles}: Unphysical bond distances(d<0.5 or d>3.) in the OpenBabel conformer"
         logger.error(bd_err_msg)
         raise RuntimeError(bd_err_msg)
 
@@ -209,15 +203,12 @@ def smiles_to_structure_rdk(smiles: str,
         # due to chirality constraints.
         params.enforceChirality = False
         if AllChem.EmbedMolecule(mol, params) == 0:
-            logger.info(
-                f"{smiles}: Embedding succeeded after disabling chirality.")
             # Reset the chirality flag for the next attempt
             params.enforceChirality = True
             break
 
         if attempt == max_attempts - 1:
             err_msg = f"{smiles}: Embedding failed after {max_attempts} attempts."
-            logger.error(err_msg)
             raise RuntimeError(err_msg)
 
     # Get conformer with 3D coordinates
@@ -230,7 +221,7 @@ def smiles_to_structure_rdk(smiles: str,
         for bond in mol.GetBonds()
     ]
     if any(distance < 0.5 or distance > 3.0 for distance in bond_distances):
-        bd_err_msg = f"{smiles}: Unphysical bond distances in the RDKit conformer.\n{bond_distances}"
+        bd_err_msg = f"{smiles}: Unphysical bond distances(d<0.5 or d>3.) in the RDKit conformer."
         logger.error(bd_err_msg)
         raise RuntimeError(bd_err_msg)
 
