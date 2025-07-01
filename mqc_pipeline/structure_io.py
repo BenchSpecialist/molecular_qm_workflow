@@ -13,7 +13,7 @@ from dataclasses import asdict
 from typing import Union, BinaryIO, TextIO, Iterable
 
 from .common import Structure
-from .property import DFT_ENERGY_KEY
+from .property.keys import DFT_ENERGY_KEY
 from .constants import ELEMENT_TO_ATOMIC_NUMBER
 
 # Type aliases
@@ -239,7 +239,7 @@ def write_molecule_property(
     # One dict per structure
     _mol_keys = [*SHARED_KEYS, *additional_mol_keys]
     data = [
-        {**{key: getattr(st, key) for key in _mol_keys}, **st.property}
+        {'num_atoms': len(st.elements), **{key: getattr(st, key) for key in _mol_keys}, **st.property}
         for st in sts
     ] # yapf:disable
 
