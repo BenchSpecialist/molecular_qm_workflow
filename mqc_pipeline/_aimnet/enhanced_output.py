@@ -19,17 +19,17 @@ class EnhancedElectronicLevelsOutput(nn.Module):
 
         # Add normalization buffers
         #Aimnet2
+        #self.register_buffer('orbital_mean', torch.tensor([-6.08881950378418, -2.019904375076294]))  # [homo_mean, lumo_mean]
+        #self.register_buffer('orbital_std', torch.tensor([1.0473166704177856, 1.2768841981887817]))  # [homo_std, lumo_std]
+        # Mixed 29M
         self.register_buffer(
             'orbital_mean',
-            torch.tensor([-6.08881950378418,
-                          -2.019904375076294]))  # [homo_mean, lumo_mean]
+            torch.tensor([-6.067822456359863,
+                          -0.9488564729690552]))  # [homo_mean, lumo_mean]
         self.register_buffer('orbital_std',
                              torch.tensor(
-                                 [1.0473166704177856,
-                                  1.2768841981887817]))  # [homo_std, lumo_std]
-        # Mixed 29M
-        # self.register_buffer('orbital_mean', torch.tensor([-6.067822456359863, -0.9488564729690552]))  # [homo_mean, lumo_mean]
-        # self.register_buffer('orbital_std', torch.tensor([0.7097107172012329, 1.1951872110366821]))    # [homo_std, lumo_std]
+                                 [0.7097107172012329,
+                                  1.1951872110366821]))  # [homo_std, lumo_std]
 
         ### only internal data statistics
         # self.register_buffer('orbital_mean', torch.tensor([-6.108067512512207, -0.5065680146217346]))  # [homo_mean, lumo_mean]
@@ -141,17 +141,17 @@ class EnhancedESPOutput(nn.Module):
 
         # Add normalization buffers
         #Aimnet2 data
+        #self.register_buffer('esp_mean', torch.tensor([-1.6275646686553955, 1.551095962524414]))  # [min_mean, max_mean]
+        #self.register_buffer('esp_std', torch.tensor([0.5648373961448669, 0.6180419325828552]))   # [min_std, max_std]
+        # Mixed 29M
         self.register_buffer('esp_mean',
                              torch.tensor(
-                                 [-1.6275646686553955,
-                                  1.551095962524414]))  # [min_mean, max_mean]
+                                 [-1.7353110313415527,
+                                  1.296004295349121]))  # [min_mean, max_mean]
         self.register_buffer('esp_std',
                              torch.tensor(
-                                 [0.5648373961448669,
-                                  0.6180419325828552]))  # [min_std, max_std]
-        # Mixed 29M
-        # self.register_buffer('esp_mean', torch.tensor([-1.7353110313415527, 1.296004295349121]))      # [min_mean, max_mean]
-        # self.register_buffer('esp_std', torch.tensor([0.39517319202423096, 0.4828762710094452]))      # [min_std, max_std]
+                                 [0.39517319202423096,
+                                  0.4828762710094452]))  # [min_std, max_std]
 
         # only internal data statistics
         # self.register_buffer('esp_mean', torch.tensor([-1.7616937160491943, 1.179327130317688]))      # [min_mean, max_mean]
