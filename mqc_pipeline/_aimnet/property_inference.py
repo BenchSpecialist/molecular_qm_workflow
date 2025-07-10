@@ -193,7 +193,9 @@ def add_properties_to_sts(batch_output: dict[str, torch.Tensor],
         num_atoms = filtered_output['_natom'][i]
         assert st.atomic_numbers == atom_numbers[:num_atoms], \
             f'Atom number mismatched: {st.atomic_numbers} with {atom_numbers}'
-        st.property['AIMNET2_energy_eV'] = filtered_output['energy'][i]
+        # This energy value should almost be equal to `st.property['triton_energy_ev']`,
+        # if the Triton server and the extended Aimnet2 uses the same checkpoint
+        st.metadata['AIMNET2_energy_eV'] = filtered_output['energy'][i]
         st.property.update({
             prop_key: filtered_output[prop_key][i][0]
             for prop_key in properties

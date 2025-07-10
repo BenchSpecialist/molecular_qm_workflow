@@ -226,7 +226,8 @@ def read_xyz(xyz_path: str, parse_comment=False) -> Structure:
 def write_molecule_property(
         st_or_sts: StructureType,
         filename: str,
-        additional_mol_keys: list[str] = ['multiplicity', 'charge']):
+        additional_mol_keys: list[str] = ['multiplicity', 'charge'],
+        save_metadata: bool = True):
     """
     Write the molecule-level properties structure properties of one or multiple
     Structure objects to a CSV or Parquet file.
@@ -239,7 +240,7 @@ def write_molecule_property(
     # One dict per structure
     _mol_keys = [*SHARED_KEYS, *additional_mol_keys]
     data = [
-        {'num_atoms': len(st.elements), **{key: getattr(st, key) for key in _mol_keys}, **st.property}
+        {**{key: getattr(st, key) for key in _mol_keys}, **st.property}
         for st in sts
     ] # yapf:disable
 
@@ -252,12 +253,16 @@ def write_molecule_property(
         table = pa.Table.from_pylist(data)
         pq.write_table(table, filename)
 
-    metadata_data = [
-        {'unique_id': getattr(st, "unique_id"), **st.metadata}
-        for st in sts
-    ] # yapf:disable
-    metadata_df = polars.DataFrame(metadata_data)
-    metadata_df.write_csv('metadata.csv')
+    if save_metadata:
+        metadata_data = [
+            {"unique_id": getattr(st, "unique_id"),
+            "smiles": getattr(st, "smiles"),
+            'num_atoms': len(st.elements),
+            **st.metadata}
+            for st in sts
+        ] # yapf:disable
+        metadata_df = polars.DataFrame(metadata_data)
+        metadata_df.write_csv('metadata.csv')
 
 
 def write_atom_property(st_or_sts: StructureType,

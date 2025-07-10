@@ -1,14 +1,17 @@
 import polars
 import numpy as np
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from rdkit import Chem
 
-from ..constants import HARTREE_TO_EV
 from ..common import Structure
 from ..smiles_util import get_canonical_smiles_ob
 from ..util import get_default_logger
 
+# Energy keys:
+# b3lypg_6311g*_e_tot_ev, b3lypg_6311g*_H_tot_298K_ev,
+# triton_energy_ev,
+# AIMNET2_energy_ev
 _COMBUSTION_CSV = Path(__file__).parent / "ElementCombustionData.csv"
 _COMBUSTION_DF = polars.read_csv(_COMBUSTION_CSV)
 
@@ -21,37 +24,43 @@ class ElementCombustionData:
     product: str
     o2_consumption: float
     product_ratio: float
-    product_e_tot_hartree: float
-    product_H_tot_298K_ev: float = np.nan
-    product_e_tot_ev: float = field(init=False)
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, 'product_e_tot_ev',
-                           self.product_e_tot_hartree * HARTREE_TO_EV)
+    product_energy_ev: float
 
     @classmethod
     def from_dict(cls,
                   data_dict: dict,
-                  dft_level: str = 'b3lypg_6311g*') -> 'ElementCombustionData':
-        # Extract required fields from dictionary
-        return cls(
-            product=data_dict['product'],
-            o2_consumption=data_dict['o2_consumption'],
-            product_ratio=data_dict['product_ratio'],
-            product_e_tot_hartree=data_dict[f'{dft_level}_e_tot_hartree'],
-            product_H_tot_298K_ev=data_dict.get(f'{dft_level}_H_tot_298K_ev',
-                                                np.nan))
+                  energy_key: str = 'b3lypg_6311g*_e_tot_ev'
+                  ) -> 'ElementCombustionData':
+        # Extract required fields from dictionary and ensure proper numeric types
+        product_energy = data_dict.get(energy_key)
+
+        # Convert to float or use 0.0 if NaN
+        if product_energy is None:
+            product_energy_ev = np.nan
+        else:
+            product_energy_ev = float(product_energy)
+
+        return cls(product=data_dict['product'],
+                   o2_consumption=float(data_dict['o2_consumption']),
+                   product_ratio=float(data_dict['product_ratio']),
+                   product_energy_ev=product_energy_ev)
 
 
-ELEMENT_DATA = {
-    row["element"]: ElementCombustionData.from_dict(row)
-    for row in _COMBUSTION_DF.iter_rows(named=True)
-}
+def get_element_data_map(energy_key: str):
+    return {
+        row["element"]: ElementCombustionData.from_dict(row, energy_key)
+        for row in _COMBUSTION_DF.iter_rows(named=True)
+    }
+
+
+_default_energy_key = 'b3lypg_6311g*_e_tot_ev'
+_default_element_data = get_element_data_map(_default_energy_key)
 
 
 def calc_combustion_heat(
         smiles_or_st: str | Structure,
         mol_heat_ev: float = 0.0,
+        element_combustion_data: dict = _default_element_data,
         dft_level: str = 'b3lypg_6311g*') -> tuple[float, str]:
     """
     Calculate the heat of combustion for a molecule given its SMILES string or
@@ -114,7 +123,8 @@ def calc_combustion_heat(
     ele_count['H'] -= halogen_count
 
     # Calculate total oxygen consumption
-    total_oxy_consump = sum(count * ELEMENT_DATA[element].o2_consumption
+    total_oxy_consump = sum(count *
+                            element_combustion_data[element].o2_consumption
                             for element, count in ele_count.items())
 
     if total_oxy_consump <= 0:
@@ -123,14 +133,15 @@ def calc_combustion_heat(
 
     # Calculate heat of products using the pre-converted ev field
     product_heat_sum = sum(
-        count * ELEMENT_DATA[element].product_ratio *
-        ELEMENT_DATA[element].product_e_tot_ev
+        count * element_combustion_data[element].product_ratio *
+        element_combustion_data[element].product_energy_ev
         for element, count in ele_count.items()
-        if not np.isnan(ELEMENT_DATA[element].product_e_tot_ev))
+        if not np.isnan(element_combustion_data[element].product_energy_ev))
 
     # Calculate heat of reactants
     reactant_heat_sum = mol_heat_ev + (
-        total_oxy_consump / 2.0) * ELEMENT_DATA['O'].product_e_tot_ev
+        total_oxy_consump /
+        2.0) * element_combustion_data['O'].product_energy_ev
     combustion_heat = product_heat_sum - reactant_heat_sum
 
     # Build reaction string
@@ -138,9 +149,10 @@ def calc_combustion_heat(
 
     _first_product = True
     for element, count in ele_count.items():
-        if (product_amount := count * ELEMENT_DATA[element].product_ratio) > 0:
+        if (product_amount :=
+                count * element_combustion_data[element].product_ratio) > 0:
             prefix = '' if _first_product else ' +'
-            reaction += f"{prefix} {product_amount:.2f} * {ELEMENT_DATA[element].product}"
+            reaction += f"{prefix} {product_amount:.2f} * {element_combustion_data[element].product}"
             _first_product = False
 
     return combustion_heat, reaction

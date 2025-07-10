@@ -2,15 +2,18 @@ import os
 import time
 import yaml
 import multiprocessing
+from enum import Enum
 from pathlib import Path
+from functools import partial
 from pydantic import BaseModel, Field, field_validator
 
 from rdkit import Chem
 
+from ..smiles_util import smiles_to_structure_batch
 from ..batch_optimize import FAILED_INPUTS_FILE, optimize_sts_by_triton
 from .._aimnet import property_inference
-from ..smiles_util import smiles_to_structure_batch
-from ..property import get_properties_main
+from ..property import combustion_heat
+
 from ..settings import PySCFOption, ESPGridsOption, METHOD_AIMNet2, METHOD_DFT, ValidationError
 from ..structure_io import write_molecule_property, write_atom_property
 from ..util import get_default_logger, get_optimal_workers
@@ -23,6 +26,17 @@ TOTAL_CPUS_PER_NODE = 128
 SUPPORTED_PROP_METHODS = [METHOD_AIMNet2, METHOD_DFT]
 
 
+class AdditionalProperty(Enum):
+    COMBUSTION_HEAT = "combustion_heat"
+    VDW_VOLUME = "vdw_volume"
+
+
+SUPPORTED_ADDITIONAL_PROPS = [
+    AdditionalProperty.COMBUSTION_HEAT.value,
+    AdditionalProperty.VDW_VOLUME.value
+]
+
+
 class TritonPipelineSettings(BaseModel):
     input_file: str = Field(
         description=
@@ -33,6 +47,22 @@ class TritonPipelineSettings(BaseModel):
         description="Path to the file containing active Triton server nodes.\n"
         "# Each line should contain one node name (e.g., 'fs-sn-064').\n"
         "# If not specified, the program will check available active nodes first."
+    )
+
+    output_molecule_property_file: str = Field(
+        default="molecule_property.csv",
+        description="Output CSV/Parquet file to save molecule-level properties."
+    )
+
+    output_atom_property_file: str = Field(
+        default="atom_property.parquet",
+        description=
+        "Output CSV/Parquet file to save atom-level properties (XYZ, forces).")
+
+    dump_metadata: bool = Field(
+        default=True,
+        description=
+        "Whether to dump metadata (e.g., SMILES, unique_id, num_atoms, timings) to a CSV file."
     )
 
     property_method: str | None = Field(
@@ -58,6 +88,12 @@ class TritonPipelineSettings(BaseModel):
         description="Range for electrostatic potential in property inference.\n"
         "# Outliers will be clipped to this range. Set to null to disable clipping."
     )
+
+    post_infer_additional_properties: set[str] = Field(
+        default=SUPPORTED_ADDITIONAL_PROPS,
+        description=
+        "Additional properties to compute after Aimnet2 property inference.\n"
+        f"# Supported properties: {', '.join(SUPPORTED_ADDITIONAL_PROPS)}")
 
     dft_basis: str = Field(default='6311g*',
                            description="Basis set for PySCF calculations")
@@ -197,6 +233,37 @@ def validate_smiles(smiles_list: list[str],
     return valid_smiles
 
 
+def calc_combustion_heat_batch(sts: list,
+                               energy_key: str = 'triton_energy_ev',
+                               num_workers: int = TOTAL_CPUS_PER_NODE):
+    """
+    Calculate combustion heat for a batch of structures in parallel and add the
+    combustion heat value to each structure's property dictionary.
+    """
+    t_start = time.perf_counter()
+
+    element_combustion_data = combustion_heat.get_element_data_map(
+        energy_key=energy_key)
+
+    combustion_heat_func = partial(
+        combustion_heat.calc_combustion_heat,
+        element_combustion_data=element_combustion_data,
+        dft_level=energy_key)
+
+    with multiprocessing.Pool(processes=num_workers) as pool:
+        results = pool.starmap(combustion_heat_func,
+                               [(st, st.property.get(energy_key, 0.0))
+                                for st in sts])
+
+    # Add combustion heat values to each structure
+    for st, (combustion_heat_val, _) in zip(sts, results):
+        st.property['combustion_heat_ev'] = combustion_heat_val
+
+    logger.info(
+        f"calc_combustion_heat_batch ({num_workers} workers): {time.perf_counter() - t_start:.2f} seconds, "
+        f"{len(results)} structures")
+
+
 def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
     t_start = time.perf_counter()
 
@@ -219,6 +286,12 @@ def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
 
     # Get properties for optimized structures (ML inference or DFT)
     if settings.property_method == METHOD_AIMNet2:
+        # Add combustion enthalpy (using Triton energy)
+        if AdditionalProperty.COMBUSTION_HEAT.value in settings.post_infer_additional_properties:
+            calc_combustion_heat_batch(opt_sts,
+                                       energy_key='triton_energy_ev',
+                                       num_workers=num_cpus)
+
         out_sts = property_inference.run_parallel(
             opt_sts,
             mo_range=settings.inference_mo_range,
@@ -227,6 +300,7 @@ def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
             num_cpu_workers=num_cpus)
 
     elif settings.property_method == METHOD_DFT:
+        from ..property import get_properties_main
         pyscf_options = settings.to_pyscf_options()
         out_sts = [
             get_properties_main(
@@ -242,11 +316,12 @@ def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
         f"Total time: {len(out_sts)} structures in {time.perf_counter() - t_start:.4f} seconds"
     )
 
-    mol_prop_outfile = Path('molecule_property.csv').resolve()
-    atom_prop_outfile = Path('atom_property.parquet').resolve()
+    mol_prop_outfile = Path(settings.output_molecule_property_file).resolve()
+    atom_prop_outfile = Path(settings.output_atom_property_file).resolve()
     write_molecule_property(out_sts,
                             filename=str(mol_prop_outfile),
-                            additional_mol_keys=[])
+                            additional_mol_keys=[],
+                            save_metadata=settings.dump_metadata)
     write_atom_property(out_sts, filename=str(atom_prop_outfile))
 
     logger.info(f"Wrote molecule properties to {mol_prop_outfile}\n"
