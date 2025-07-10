@@ -85,10 +85,12 @@ def _parse_args():
     )
     parser.add_argument("--config",
                         type=str,
+                        metavar="YAML_FILE",
                         help="Path to the YAML configuration file.")
 
     parser.add_argument("--write-default-config",
                         type=str,
+                        metavar="YAML_FILE",
                         help="Write the default configuration file and exit.")
 
     parser.add_argument(
@@ -115,6 +117,7 @@ def _parse_args():
     parser.add_argument(
         "--extract-xyz",
         type=str,
+        metavar="XYZ_DIR",
         help=
         "Specify the directory and extract XYZ files from atom_property.csv.")
 

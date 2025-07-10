@@ -56,7 +56,7 @@ class TritonPipelineSettings(BaseModel):
     )
 
     output_atom_property_file: str = Field(
-        default="atom_property.parquet",
+        default="atom_property.csv",
         description=
         "Output CSV/Parquet file to save atom-level properties (XYZ, forces).")
 

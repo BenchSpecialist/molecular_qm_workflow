@@ -15,35 +15,76 @@ ssh slurm@195.242.10.37
 
 ## Command-line API
 
-The command-line interface [`mqc_runner.py`](https://github.com/Solid-Energy-Systems/mqc_pipeline/blob/main/cmdline/mqc_runner.py) provides a end-to-end solution for high-throughput molecular quantum chemistry calculations. It automatically:
+The mqc_pipeline provides two command-line interfaces for different computational approaches. Both interfaces follow similar usage patterns with configuration YAML files and command-line arguments tailored to their respective computational backends.
+
+### 1. `mqc_runner.py` - DFT-based Pipeline
+
+The [`mqc_runner.py`](https://github.com/Solid-Energy-Systems/mqc_pipeline/blob/main/cmdline/mqc_runner.py) interface provides an end-to-end solution for high-throughput molecular geometry optimization via GPU-accelerated DFT or machine learning potential (AIMNet2) via ASE interface, and subsequent property calculations using DFT. It automatically:
 
 - **Batches** input molecules based on configuration settings
 - **Launches** parallelized jobs to the SLURM-managed GPU cluster
 - **Monitors** and logs progress throughout execution
 - **Collects** results from distributed jobs
-- **Cleanups** distributed job files after data collection
+- **Combines** output data from multiple batches into unified datasets
+- **Cleanup** distributed job files after successful execution
 
-### Usage
+### 2. `triton_runner.py` - ML-accelerated Pipeline
+
+The [`triton_runner.py`](https://github.com/Solid-Energy-Systems/mqc_pipeline/blob/main/cmdline/triton_runner.py) interface provides access to fast geometry relaxations via NVIDIA Triton inference servers, and efficient property calculations via our internal ML models or DFT calculations. The cmdline utility provides functionality to:
+
+- **Detect** or **launch** Triton inference server nodes
+- **Distribute** molecular calculations across available server nodes
+- **Process** results from all server nodes
+
+### How to run Triton Pipeline
+
+Please follow these steps strictly to run the Triton pipeline:
+
+1. Generate the `ACTIVE_TRITON_NODES.txt` file containing available Triton server nodes:
+```bash
+triton_runner.py --get-active-triton-nodes
+```
+This file is required in the config YAML.
+
+2. Estimate your workload and request the total number of Triton server nodes to run:
+```bash
+triton_runner.py --request-num-server-nodes <num_active_nodes>
+```
+> **Important**: Please wait at least 2 minutes for all servers to initialize.
+
+3. Generate a default configuration file:
+```bash
+triton_runner.py --write-default-config <config.yaml>
+```
+Edit this file to specify your input parameters and computational settings.
+
+4. Run the pipeline with the configuration file:
+```
+triton_runner.py --config <config.yaml>
+```
+
+
+### How to run DFT pipeline
 
 The command-line utility has been pre-configured for the `slurm` user on the **Fluidstack cluster**. To get started, test the installation by running:
 ```
 slurm@fs-s-login-001:/mnt/filesystem$ mqc_runner.py --help
-usage: mqc_runner.py [-h] [--config CONFIG] [--write-default-config WRITE_DEFAULT_CONFIG] [--dry-run]
-                     [--combine-results] [--cleanup]
+usage: mqc_runner.py [-h] [--config YAML_FILE] [--write-default-config YAML_FILE] [--dry-run] [--combine-results] [--cleanup] [--extract-xyz XYZ_DIR]
 
 Cmdline utility to run molecular geometry optimization and property calculation pipeline.
 
 options:
   -h, --help            show this help message and exit
-  --config CONFIG       Path to the YAML configuration file.
-  --write-default-config WRITE_DEFAULT_CONFIG
+  --config YAML_FILE    Path to the YAML configuration file.
+  --write-default-config YAML_FILE
                         Write the default configuration file and exit.
   --dry-run             For debug: Batch inputs, write sbatch script and print command without executing it.
   --combine-results     Combine results from all batches.
-  --cleanup             Remove temporary files after combining results. Deletes batch directories, SLURM
-                        scripts/logs, and cached config. Can only be used with --combine-results to prevent
-                        accidental deletion of batch results before they are combined into final output files. Use
-                        this to clean workspace after successful pipeline completion.
+  --cleanup             Remove temporary files after combining results. Deletes batch directories, SLURM scripts/logs, and cached config. Use this to clean workspace
+                        after successful pipeline completion. Batch directories are only removed when this flag is used with --combine-results to prevent accidental
+                        deletion of batch results before they are combined into final output files.
+  --extract-xyz XYZ_DIR
+                        Specify the directory and extract XYZ files from atom_property.csv.
 ```
 > **Note:** To submit jobs on the Fluidstack cluster, **your launch directory must be located within `/mnt/filesystem`**. This path is a shared mounted directory accessible by both the login nodes and all compute nodes. In contrast, the home directories of login and compute nodes are isolated. If you submit jobs from your home directory, they will fail silently—no output will be returned, and the jobs will effectively disappear.
 
