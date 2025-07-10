@@ -93,7 +93,7 @@ def optimize_sts_by_triton(sts: list[Structure],
     opt_sts = asyncio.run(optimize_sts_async(sts, batch_size))
 
     if failed_sts := [(index, st) for index, st in enumerate(opt_sts)
-                      if st.metadata['ase_converged'] == False]:
+                      if st.metadata['triton_converged'] == False]:
         with open(FAILED_INPUTS_FILE, 'a') as f:
             f.write("\n".join([
                 f"{st.smiles}: batch optimization failed to converge."
@@ -106,6 +106,6 @@ def optimize_sts_by_triton(sts: list[Structure],
 
     # Remove un-converged structures from output
     converged_sts = [
-        st for st in opt_sts if st.metadata['ase_converged'] == True
+        st for st in opt_sts if st.metadata['triton_converged'] == True
     ]
     return converged_sts

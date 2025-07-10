@@ -264,10 +264,34 @@ def run_one_batch(
     return sts
 
 
+def _batch(sts: list, size_range: tuple[int, int],
+           num_cores: int) -> list[list]:
+    """
+    Divide a list of structures into batches based on available cores and size constraints.
+
+    :param sts: List of structures to batch
+    :param size_range: Tuple containing (min_batch_size, max_batch_size)
+    :param num_cores: Number of CPU/GPU cores available for processing
+
+    :return: List of batched structure lists
+    """
+    min_batch_size, max_batch_size = size_range
+
+    # Calculate optimal batch size based on available cores
+    if (batch_size :=
+        (len(sts) + num_cores - 1) // num_cores) > max_batch_size:
+        batch_size = max_batch_size
+    elif batch_size < min_batch_size:
+        batch_size = min_batch_size
+
+    return [sts[i:i + batch_size] for i in range(0, len(sts), batch_size)]
+
+
 def run_parallel(
         sts: list[Structure] | Structure,
         mo_range: tuple[float, float] | None = None,
         esp_range: tuple[float, float] | None = None,
+        min_batch_size: int = 32,
         max_batch_size: int = 4096,
         num_cpu_workers: int = TOTAL_CPUS_PER_NODE) -> list[Structure]:
     """
@@ -298,11 +322,9 @@ def run_parallel(
 
     if torch.cuda.is_available():
         # GPU processing - split structures across available GPUs
-        batch_size = (len(sts) + AVAILABLE_GPUS - 1) // AVAILABLE_GPUS
-        batch_size = min(batch_size, max_batch_size)
-        batches = [
-            sts[i:i + batch_size] for i in range(0, len(sts), batch_size)
-        ]
+        batches = _batch(sts,
+                         size_range=(min_batch_size, max_batch_size),
+                         num_cores=AVAILABLE_GPUS)
 
         logger.info(
             f"Parallel inference on {AVAILABLE_GPUS} GPUs with {len(batches)} batches"
@@ -320,11 +342,9 @@ def run_parallel(
         num_cpu_workers = min(num_cpu_workers, len(sts))
 
         # Split structures across CPU workers
-        batch_size = (len(sts) + num_cpu_workers - 1) // num_cpu_workers
-        batch_size = min(batch_size, max_batch_size)
-        batches = [
-            sts[i:i + batch_size] for i in range(0, len(sts), batch_size)
-        ]
+        batches = _batch(sts,
+                         size_range=(min_batch_size, max_batch_size),
+                         num_cores=num_cpu_workers)
 
         logger.info(
             f"Parallel inference on {num_cpu_workers} CPUs with {len(batches)} batches ({[len(batch) for batch in batches]})"

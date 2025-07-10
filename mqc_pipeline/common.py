@@ -7,7 +7,6 @@ This module contains:
 - Utility functions:
     - calculation of unpaired electrons from a RDKit molecule.
 """
-import json
 import numpy as np
 from uuid import uuid4
 from typing import Optional
@@ -94,7 +93,7 @@ class Structure:
         metadata = {
             # 'chemical_formula': str(ase_atoms.symbols),
             **{
-                f'ase_{k}': v
+                f'triton_{k}': v
                 for k, v in ase_atoms.info.items() if k in ('nsteps', 'converged', 'fmax')
             }
         }
@@ -106,11 +105,12 @@ class Structure:
                  metadata=metadata)
 
         if energy := ase_atoms.info.get('energy'):
-            st.property['ase_energy_ev'] = float(energy)
+            st.property['triton_energy_ev'] = float(energy)
         if (grad_arr := ase_atoms.info.get('forces')) is not None:
-            st.save_gradients(gradients_arr=grad_arr, prop_key='ase_forces')
-        if (dip := ase_atoms.info.get('dipole')) is not None:
-            st.property['ase_dipole'] = json.dumps(dip[0].tolist())
+            st.save_gradients(gradients_arr=grad_arr, prop_key='triton_forces')
+        ## dipole vectors are all zero.
+        # if (dip := ase_atoms.info.get('dipole')) is not None:
+        #     st.property['triton_dipole'] = json.dumps(dip[0].tolist())
 
         return st
 
