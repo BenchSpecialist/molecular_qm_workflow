@@ -84,7 +84,7 @@ class Structure:
 
     @classmethod
     def from_ase_atoms(cls, ase_atoms: Atoms):
-        # `ase_atoms.info` dict may contain:
+        # `ase_atoms.info` dict (returned by Triton server) contains:
         # energy, forces, stress, virials, dipole, nsteps, converged, fmax
         smiles = ase_atoms.info.get('smiles', '')
         unique_id = ase_atoms.info.get('unique_id',
