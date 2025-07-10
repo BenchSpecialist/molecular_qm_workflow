@@ -30,7 +30,7 @@ MO_CLIP_RANGE = (-20.0, 20.0)
 
 BatchInfo = namedtuple('BatchInfo', ['n_atoms_min', 'n_atoms_max'])
 
-BATCH_INFO_FILE = Path("prop_batch_info.csv")
+BATCH_INFO_FILE = Path("_prop_batch_info.csv")
 
 
 def _log(msg: str, file: Path = BATCH_INFO_FILE) -> None:
@@ -367,5 +367,10 @@ def run_parallel(
     logger.info(
         f"Property inference: {len(sts)} molecules in {time.perf_counter() - t_start:.2f} seconds"
     )
+
+    # Remove .lock file after processing
+    lock_file = Path(f'{BATCH_INFO_FILE.stem}.csv.lock')
+    if lock_file.exists():
+        lock_file.unlink()
 
     return out_sts

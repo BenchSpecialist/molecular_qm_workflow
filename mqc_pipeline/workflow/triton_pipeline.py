@@ -13,6 +13,7 @@ from ..smiles_util import smiles_to_structure_batch
 from ..batch_optimize import FAILED_INPUTS_FILE, optimize_sts_by_triton
 from .._aimnet import property_inference
 from ..property import combustion_heat
+from ..property.volume import get_vdw_volume
 
 from ..settings import PySCFOption, ESPGridsOption, METHOD_AIMNet2, METHOD_DFT, ValidationError
 from ..structure_io import write_molecule_property, write_atom_property
@@ -264,6 +265,30 @@ def calc_combustion_heat_batch(sts: list,
         f"{len(results)} structures")
 
 
+def add_vdw_volume_batch(sts: list, num_workers: int = TOTAL_CPUS_PER_NODE):
+    """
+    Calculate van der Waals volume for a batch of structures in parallel
+    and add the vdw_volume value to each structure's property dictionary.
+    Note that the vectorized CPU implementation of get_vdw_volume is used here.
+    """
+    t_start = time.perf_counter()
+
+    vdw_volume_func = partial(get_vdw_volume, use_gpu=False)
+
+    with multiprocessing.Pool(processes=num_workers) as pool:
+        # Output structures from Triton all have atomic_numbers attribute.
+        results = pool.starmap(vdw_volume_func,
+                               [(st.xyz, st.atomic_numbers) for st in sts])
+
+    # Add vdw_volume values to each structure
+    for st, vdw_volume in zip(sts, results):
+        st.property['vdw_volume_angstrom3'] = vdw_volume
+
+    logger.info(
+        f"add_vdw_volume_batch ({num_workers} workers): {time.perf_counter() - t_start:.2f} seconds, "
+        f"{len(results)} structures")
+
+
 def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
     t_start = time.perf_counter()
 
@@ -292,6 +317,10 @@ def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
                                        energy_key='triton_energy_ev',
                                        num_workers=num_cpus)
 
+        # Add vdw_volume (using optimized structures)
+        if AdditionalProperty.VDW_VOLUME.value in settings.post_infer_additional_properties:
+            add_vdw_volume_batch(opt_sts, num_workers=num_cpus)
+
         out_sts = property_inference.run_parallel(
             opt_sts,
             mo_range=settings.inference_mo_range,
@@ -312,8 +341,10 @@ def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
             ) for st in opt_sts
         ]
 
+    time_cost = time.perf_counter() - t_start
+    avg_cost_time = time_cost / len(out_sts)
     logger.info(
-        f"Total time: {len(out_sts)} structures in {time.perf_counter() - t_start:.4f} seconds"
+        f"Total time: {len(out_sts)} structures in {time_cost:.4f} seconds ({avg_cost_time:.3f} secs per structure)"
     )
 
     mol_prop_outfile = Path(settings.output_molecule_property_file).resolve()
