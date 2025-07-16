@@ -351,7 +351,6 @@ def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
     atom_prop_outfile = Path(settings.output_atom_property_file).resolve()
     write_molecule_property(out_sts,
                             filename=str(mol_prop_outfile),
-                            additional_mol_keys=[],
                             save_metadata=settings.dump_metadata)
     write_atom_property(out_sts, filename=str(atom_prop_outfile))
 

@@ -94,6 +94,13 @@ def _parse_args():
                         help="Write the default configuration file and exit.")
 
     parser.add_argument(
+        "--validate-input",
+        action="store_true",
+        help=
+        "Validate the input file or directory. This flag needs to be used with --config option."
+    )
+
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help=
@@ -260,12 +267,18 @@ def main():
 
     try:
         settings = PipelineSettings.from_yaml(args.config)
-        # Detailed validation of the input file or directory
-        validate_input(settings.input_file_or_dir)
     except Exception as e:
-        logger.error(str(e))
         print(str(e))
         raise SystemExit(1)
+
+    if args.validate_input:
+        try:
+            # Detailed validation of the input file or directory
+            validate_input(settings.input_file_or_dir)
+            print("Input validation successful.")
+        except Exception as e:
+            print(f"Input validation failed: {str(e)}")
+            raise SystemExit(1)
 
     logger.info(f"Settings:\n{pprint.pformat(dict(settings))}")
 
@@ -299,8 +312,12 @@ def main():
 
     submitted_jobs = []
 
+    are_smiles_inputs = input_path.suffix in (
+        '.txt', '.csv') or (input_path.suffix in ('.pkl', '.pickle')
+                            and settings.pickled_input_type == 'smiles')
+
     # Process based on input type
-    if input_path.is_file():
+    if are_smiles_inputs:
         # Inputs are SMILES strings
         smiles_list = read_smiles(input_path)
         batch_sizes = _distribute_inputs(len(smiles_list), settings.num_jobs)
@@ -326,7 +343,7 @@ def main():
                           'w') as fh:
                     fh.write("\n".join(batch_smiles))
 
-            batch_file = batch_dir / "input_smiles.pkl"
+            batch_file = batch_dir / "_input_smiles.pkl"
             with open(batch_file, 'wb') as fh:
                 pickle.dump(batch_smiles, fh)
 
@@ -342,6 +359,7 @@ def main():
             if job_id:
                 submitted_jobs.append(job_id)
 
+    ########################################
     if input_path.is_dir():
         # Starting from XYZ files
         num_xyz_files = _count_files(input_path)
@@ -369,12 +387,54 @@ def main():
                         st.metadata.get('from_xyz_file') for st in batch_sts
                     ]))
 
-            batch_file = batch_dir / "input_sts.pkl"
+            batch_file = batch_dir / "_input_sts.pkl"
             # Serialize Structure objects in the current batch using pickle
             with open(batch_file, 'wb') as fh:
                 pickle.dump(batch_sts, fh)
 
             # Make outputs generated in the batch dir
+            with change_dir(batch_dir):
+                # Submit SLURM job for this batch
+                job_id = _submit_one_slurm_job(
+                    config=settings,
+                    batch_id=batch_id,
+                    batch_file=batch_file,
+                    cached_config=_cached_config_path,
+                    dry_run=args.dry_run)
+            if job_id:
+                submitted_jobs.append(job_id)
+
+    if input_path.suffix in (
+            '.pkl', '.pickle') and settings.pickled_input_type == 'structure':
+        # Starting from pickled Structure objects
+        with open(input_path, 'rb') as fh:
+            all_sts = pickle.load(fh)
+        batch_sizes = _distribute_inputs(len(all_sts), settings.num_jobs)
+        msg = (
+            f"Read {len(all_sts)} structure objects from {input_path}\n"
+            f"Requesting {settings.num_jobs} jobs, batch sizes: {batch_sizes}")
+        logger.info(msg)
+        print(msg)
+
+        # Create batches
+        start_idx = 0
+        for batch_id, batch_size in enumerate(batch_sizes):
+            batch_sts = all_sts[start_idx:start_idx + batch_size]
+            start_idx += batch_size
+
+            # Determine output directory: use output_dir directly for single job
+            if settings.num_jobs == 1:
+                batch_dir = output_dir
+            else:
+                batch_dir = output_dir / f"batch_{batch_id}"
+                batch_dir.mkdir(parents=True, exist_ok=True)
+
+            batch_file = batch_dir / "_input_sts.pkl"
+            # Serialize Structure objects in the current batch using pickle
+            with open(batch_file, 'wb') as fh:
+                pickle.dump(batch_sts, fh)
+
+            # Make outputs generated in the batch_dir
             with change_dir(batch_dir):
                 # Submit SLURM job for this batch
                 job_id = _submit_one_slurm_job(
@@ -435,14 +495,9 @@ def _submit_one_slurm_job(config: PipelineSettings,
                                 text=True,
                                 capture_output=True)
         job_id = result.stdout.strip().split()[-1]
-        msg = f"Submitted batch {batch_id} as job {job_id}"
-        logger.info(msg)
-        print(msg)
         return job_id
     except subprocess.CalledProcessError as e:
-        msg = f"Failed to submit job: {str(e)}"
-        logger.error(msg)
-        print(msg)
+        print(f"Failed to submit job: {str(e)}")
         return None
 
 

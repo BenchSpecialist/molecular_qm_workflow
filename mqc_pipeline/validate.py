@@ -80,18 +80,19 @@ def validate_input(input_file_or_dir: PathLike) -> str:
         raise ValidationError(
             f"Input file or directory does not exist: {input_file_or_dir}")
 
-    # Validate single-file input (contains SMILES strings)
-    if input_file_or_dir.is_file():
-        if input_file_or_dir.suffix not in ['.txt', '.csv']:
-            raise ValidationError("Input file must be a .txt or .csv file.")
-        # Check if the file has a single column
-        if input_file_or_dir.suffix == '.csv':
-            validate_csv(input_file_or_dir)
+    # Skip validation for pickle files
+    if input_file_or_dir.suffix in ('.pkl', '.pickle'):
+        return str(input_file_or_dir)
 
-        if input_file_or_dir.suffix == '.txt' and (
-                not is_txt_single_column(input_file_or_dir)):
+    # Check if the csv/txt has a single column
+    if input_file_or_dir.suffix == '.csv':
+        validate_csv(input_file_or_dir)
+
+    elif input_file_or_dir.suffix == '.txt':
+        if not is_txt_single_column(input_file_or_dir):
             raise ValidationError(
                 "Text file must contain a single column of smiles strings.")
+
     # Validate directory input (XYZ files)
     elif input_file_or_dir.is_dir():
         # Check for the first xyz file only (stopping at first match)
@@ -103,7 +104,7 @@ def validate_input(input_file_or_dir: PathLike) -> str:
                 "Directory must contain at least one .xyz file.")
     else:
         raise ValidationError(
-            "Input must be a valid .txt, .csv file or directory containing xyz files."
+            "Input must be a valid txt, csv, pkl file or directory containing xyz files."
         )
 
     return str(input_file_or_dir)

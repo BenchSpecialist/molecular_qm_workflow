@@ -74,7 +74,7 @@ def test_validate_input(tmp_cwd):
     invalid_inp = "smiles.invalid"
     Path(invalid_inp).touch()
     with pytest.raises(ValidationError,
-                       match="Input file must be a .txt or .csv file."):
+                       match="Input must be a valid txt, csv, pkl file"):
         validate_input(invalid_inp)
 
     # Test with a directory

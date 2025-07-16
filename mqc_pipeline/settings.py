@@ -28,6 +28,8 @@ _DEFAULT_DISPERSION = 'd3bj'
 
 SUPPORTED_COLUMNAR_FILE_FORMATS = ('csv', 'parquet')
 
+SUPPORTED_PICKLE_INPUT_TYPES = ('smiles', 'structure')
+
 
 class ValidationError(Exception):
     pass
@@ -154,9 +156,13 @@ class PipelineSettings(BaseModel):
     """
     # Input and job settings
     input_file_or_dir: str = Field(
-        description=
-        "Path to a text/csv file that contains a single column of smiles strings.\n"
+        description="Path to a txt/csv/pkl file that contains smiles strings.\n"
         "# Alternatively, a directory containing multiple xyz files.")
+
+    pickled_input_type: str | None = Field(
+        default="smiles",
+        description="Type of inputs if a pkl file is given.\n"
+        f"# Supported types: {', '.join(SUPPORTED_PICKLE_INPUT_TYPES)}.")
 
     num_jobs: int = Field(
         default=1,
@@ -379,6 +385,18 @@ class PipelineSettings(BaseModel):
                 f"Input file or directory does not exist: {input_file_or_dir}")
         return str(input_file_or_dir)
 
+    @field_validator('pickled_input_type')
+    def validate_pickled_input_type(cls, pickled_input_type: str) -> str:
+        """
+        Validates that the pickled input type is one of the supported values.
+        """
+        if pickled_input_type not in SUPPORTED_PICKLE_INPUT_TYPES:
+            raise ValidationError(
+                f"Unsupported pickled input type: {pickled_input_type}. "
+                f"Supported types are: {', '.join(SUPPORTED_PICKLE_INPUT_TYPES)}"
+            )
+        return pickled_input_type.lower()
+
     @field_validator('smiles_to_3d_method')
     def validate_smiles_to_3d_method(cls, method: str) -> str:
         """
@@ -411,8 +429,11 @@ class PipelineSettings(BaseModel):
         """
         # xyz inputs are allowed to skip geometry optimization,
         # so method can be None.
-        if (self.geometry_opt_method is None
-                and not Path(self.input_file_or_dir).is_dir()):
+        inp = Path(self.input_file_or_dir)
+        # XYZ directory or pickled structure input
+        is_xyz_type = inp.is_dir() or (inp.suffix in ('.pkl', '.pickle') and
+                                       self.pickled_input_type == 'structure')
+        if (self.geometry_opt_method is None and not is_xyz_type):
             raise ValidationError(
                 "Geometry optimization method cannot be None for SMILES inputs. "
                 "Please specify a valid geometry optimization method.")

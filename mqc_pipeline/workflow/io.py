@@ -43,9 +43,25 @@ def read_smiles(input_file: str) -> list[str]:
                 isinstance(smiles, str) for smiles in smiles_list):
             raise ValueError(
                 "Pickle file must contain a list of SMILES strings.")
+    elif input_file.suffix in ['.parquet', '.parq']:
+        import pyarrow.parquet as pq
+
+        table = pq.read_table(input_file)
+        df = polars.from_arrow(table)
+
+        if not (smiles_col_name := next(
+            (col for col in SMILES_COL_NAMES if col in df.columns), None)):
+            raise ValueError(
+                f"No SMILES column found in Parquet file. Allowed column names: {', '.join(SMILES_COL_NAMES)}."
+            )
+        logger.info(f"Reading SMILES strings from column '{smiles_col_name}'.")
+        # filter out None, empty strings.
+        df = df.filter((polars.col(smiles_col_name).is_not_null())
+                       & (polars.col(smiles_col_name) != ''))
+        smiles_list = df[smiles_col_name].to_list()
     else:
         raise ValueError(
-            f"Unsupported file format: {input_file.suffix}. Only .csv, .txt, and .pkl files are supported."
+            f"Unsupported file format: {input_file.suffix}. Only .csv, .txt, .pkl, and .parquet files are supported."
         )
     return smiles_list
 
