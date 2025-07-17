@@ -223,9 +223,7 @@ def read_xyz(xyz_path: str, parse_comment=False) -> Structure:
                          metadata={'from_xyz_file': str(xyz_path)})
 
 
-def write_molecule_property(st_or_sts: StructureType,
-                            filename: str,
-                            save_metadata: bool = True):
+def write_molecule_property(st_or_sts: StructureType, filename: str):
     """
     Write the molecule-level properties structure properties of one or multiple
     Structure objects to a CSV or Parquet file.
@@ -251,17 +249,27 @@ def write_molecule_property(st_or_sts: StructureType,
         table = pa.Table.from_pylist(data)
         pq.write_table(table, filename)
 
-    if save_metadata:
-        metadata_data = [
-            {"unique_id": st.unique_id,
-            "smiles": st.smiles,
-            'num_atoms': len(st.elements),
-            'multiplicity': st.multiplicity,
-            **st.metadata}
-            for st in sts
-        ] # yapf:disable
+
+def write_metadata(st_or_sts: StructureType, filename: str):
+    if not filename.endswith(COLUMNAR_FILE_EXTENSIONS):
+        raise ValueError("Unsupported file format. Use .csv or .parquet")
+    sts = [st_or_sts] if isinstance(st_or_sts, Structure) else st_or_sts
+
+    metadata_data = [
+        {"unique_id": st.unique_id,
+        "smiles": st.smiles,
+        'num_atoms': len(st.elements),
+        'multiplicity': st.multiplicity,
+        **st.metadata}
+        for st in sts
+    ] # yapf:disable
+    if filename.endswith('.csv'):
         metadata_df = polars.DataFrame(metadata_data)
-        metadata_df.write_csv('metadata.csv')
+        metadata_df.write_csv(filename)
+    if filename.endswith(('.parquet', '.parq')):
+        # Use PyArrow for Parquet
+        metadata_table = pa.Table.from_pylist(metadata_data)
+        pq.write_table(metadata_table, filename)
 
 
 def write_atom_property(st_or_sts: StructureType,

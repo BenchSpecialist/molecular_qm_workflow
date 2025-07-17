@@ -39,6 +39,17 @@ _PYTHON_EXE = "/mnt/filesystem/dev_renkeh/mqc-env/bin/python"
 _SLURM_SH_DIR = "slurm_scripts"
 _SLURM_LOG_DIR = "slurm_logs"
 _CACHED_CONFIG = "_config.pkl"
+_BATCH_SMILES_PKL = "_input_smiles.pkl"
+_BATCH_STS_PKL = "_input_sts.pkl"
+
+# Output files in batch directories
+OUTFILES = (
+    "molecule_property.csv",
+    "atom_property.csv",
+    "metadata.csv",
+    # additional outputs when fluoride_bde is enabled
+    "defluorined_molecule_property.csv",
+    "defluorined_atom_property.csv")
 
 SLURM_CMD = """#!/bin/bash
 
@@ -197,9 +208,11 @@ def main():
         output_dir = Path(os.environ.get("MQC_OUTPUT_DIR",
                                          Path.cwd())).resolve()
         # Cleanup SLURM scripts/logs, and cached config
-        for pkl_file in output_dir.glob("*.pkl"):
-            pkl_file.unlink(missing_ok=True)
-            print(f"Removed {pkl_file}")
+        for pkl_file in (_CACHED_CONFIG, _BATCH_SMILES_PKL, _BATCH_STS_PKL):
+            pkl_path = output_dir / pkl_file
+            if pkl_path.exists():
+                pkl_path.unlink(missing_ok=True)
+                print(f"Removed {pkl_path}")
         dirs_to_remove = [
             d for d in (output_dir / _SLURM_SH_DIR, output_dir / _SLURM_LOG_DIR)
             if d.exists()
@@ -222,10 +235,7 @@ def main():
             if d.is_dir() and d.name.startswith("batch_")
         ]
         if batch_dirs:
-            outfiles_to_combine = ("molecule_property.csv",
-                                   "atom_property.csv", "metadata.csv")
-
-            for outfile in outfiles_to_combine:
+            for outfile in OUTFILES:
                 _combine_csv_files(batch_dirs, outfile)
 
             # Combine "FAILED_INPUTS.txt" files if exist
@@ -343,7 +353,7 @@ def main():
                           'w') as fh:
                     fh.write("\n".join(batch_smiles))
 
-            batch_file = batch_dir / "_input_smiles.pkl"
+            batch_file = batch_dir / _BATCH_SMILES_PKL
             with open(batch_file, 'wb') as fh:
                 pickle.dump(batch_smiles, fh)
 
@@ -387,7 +397,7 @@ def main():
                         st.metadata.get('from_xyz_file') for st in batch_sts
                     ]))
 
-            batch_file = batch_dir / "_input_sts.pkl"
+            batch_file = batch_dir / _BATCH_STS_PKL
             # Serialize Structure objects in the current batch using pickle
             with open(batch_file, 'wb') as fh:
                 pickle.dump(batch_sts, fh)
@@ -429,7 +439,7 @@ def main():
                 batch_dir = output_dir / f"batch_{batch_id}"
                 batch_dir.mkdir(parents=True, exist_ok=True)
 
-            batch_file = batch_dir / "_input_sts.pkl"
+            batch_file = batch_dir / _BATCH_STS_PKL
             # Serialize Structure objects in the current batch using pickle
             with open(batch_file, 'wb') as fh:
                 pickle.dump(batch_sts, fh)

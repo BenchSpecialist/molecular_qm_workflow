@@ -211,23 +211,30 @@ def get_properties_main(st: Structure,
 
     # ESP calculations can only run on GPUs
     if return_esp_range:
-        # Generate grids for ESP calculations
-        grids = generate_esp_grids(mol,
-                                   rcut=esp_options.solvent_accessible_region,
-                                   space=esp_options.grid_spacing,
-                                   solvent_probe=esp_options.probe_depth)
-        esp_range, st.metadata['dft_esp_time'] = timeit(
-            get_esp_range, mol=mol, grids=grids, one_rdm=rdm1) # yapf:disable
-        st.property[ESP_MIN_KEY], st.property[ESP_MAX_KEY] = esp_range
+        try:
+            # Generate grids for ESP calculations
+            grids = generate_esp_grids(
+                mol,
+                rcut=esp_options.solvent_accessible_region,
+                space=esp_options.grid_spacing,
+                solvent_probe=esp_options.probe_depth)
+            esp_range, st.metadata['dft_esp_time'] = timeit(
+                get_esp_range, mol=mol, grids=grids, one_rdm=rdm1) # yapf:disable
+            st.property[ESP_MIN_KEY], st.property[ESP_MAX_KEY] = esp_range
+        except Exception as e:
+            logger.error(f"{st.smiles} (id={st.unique_id}): {str(e)}")
 
     # CHELPG charges calculations are GPU-only
     if return_chelpg_chg:
         chelpg = _import_chelpg()
-        # Evaluate CHELPG charges: this method fits atomic charges to reproduce
-        # ESP at a number of points around the molecule.
-        st.atom_property[CHELPG_CHARGE_KEY], st.metadata[
-            'dft_chelpg_time'] = timeit(
-                lambda mf: chelpg.eval_chelpg_layer_gpu(mf).get(), mf=mf)
+        try:
+            # Evaluate CHELPG charges: this method fits atomic charges to reproduce
+            # ESP at a number of points around the molecule.
+            st.atom_property[CHELPG_CHARGE_KEY], st.metadata[
+                'dft_chelpg_time'] = timeit(
+                    lambda mf: chelpg.eval_chelpg_layer_gpu(mf).get(), mf=mf)
+        except Exception as e:
+            logger.error(f"{st.smiles} (id={st.unique_id}): {str(e)}")
 
     # Currently, the total electronic energy is used to approximate the enthalpy
     if return_combustion_heat:

@@ -9,7 +9,7 @@ from ..common import Structure
 from ..smiles_util import smiles_to_structure
 from .. import optimize
 from ..property import get_properties_main
-from ..structure_io import write_molecule_property, write_atom_property
+from ..structure_io import write_molecule_property, write_atom_property, write_metadata
 from ..util import get_default_logger, setup_logger
 
 from .io import read_smiles, read_xyz_dir
@@ -19,6 +19,7 @@ _GPU_ID = os.environ.get("CUDA_VISIBLE_DEVICES") or 0
 
 MOL_PROP_OUTFILE = "molecule_property.{ext}"
 ATOM_PROP_OUTFILE = "atom_property.{ext}"
+METADATA_OUTFILE = "metadata.csv"
 
 FAILED_INPUTS = Path("FAILED_INPUTS.txt")
 
@@ -110,6 +111,7 @@ def run_one_batch(inputs: list[str] | list[Structure],
     # Run the pipeline for each molecule sequentially
     out_sts = []
     total_count = len(inputs)
+    defluorined_sts = []
 
     for i, smiles_or_st in enumerate(inputs):
         # The function does error handling/logging internally
@@ -124,6 +126,10 @@ def run_one_batch(inputs: list[str] | list[Structure],
             progress_logger.info(f"{i + 1}/{total_count} FAILED")
         else:
             out_sts.append(st)
+            if defluorined_st := st.metadata.get('defluorined_st'):
+                # If defluorined structure is available, add it to the output
+                defluorined_sts.append(defluorined_st)
+                st.metadata.pop('defluorined_st', None)
             # Log progress at specified intervals
             if (i + 1) % settings.progress_log_interval == 0 \
                 or i + 1 == total_count:
@@ -146,6 +152,20 @@ def run_one_batch(inputs: list[str] | list[Structure],
     write_atom_property(out_sts, atom_prop_out)
     logger.info(
         f"Atom-level properties written to {os.getcwd()}/{atom_prop_out}")
+
+    if len(defluorined_sts) > 0:
+        # Write defluorined structures to a separate file
+        defluorined_mol_outfile = f"defluorined_{mol_prop_out}"
+        write_molecule_property(defluorined_sts, defluorined_mol_outfile)
+        defluorined_atom_outfile = f"defluorined_{atom_prop_out}"
+        write_atom_property(defluorined_sts, defluorined_atom_outfile)
+        logger.info(
+            f"Wrote {os.getcwd()}/{defluorined_mol_outfile}, {os.getcwd()}/{defluorined_atom_outfile}"
+        )
+
+    # Dump metadata of all structures to a CSV file
+    write_metadata(out_sts + defluorined_sts, filename=METADATA_OUTFILE)
+    logger.info(f"Wrote metadata to {os.getcwd()}/{METADATA_OUTFILE}")
 
 
 def run_from_config_settings(settings: PipelineSettings) -> None:

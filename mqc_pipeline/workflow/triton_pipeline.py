@@ -16,7 +16,7 @@ from ..property import combustion_heat
 from ..property.volume import get_vdw_volume
 
 from ..settings import PySCFOption, ESPGridsOption, METHOD_AIMNet2, METHOD_DFT, ValidationError
-from ..structure_io import write_molecule_property, write_atom_property
+from ..structure_io import write_molecule_property, write_atom_property, write_metadata
 from ..util import get_default_logger, get_optimal_workers
 
 logger = get_default_logger()
@@ -60,11 +60,11 @@ class TritonPipelineSettings(BaseModel):
         description=
         "Output CSV/Parquet file to save atom-level properties (XYZ, forces).")
 
-    dump_metadata: bool = Field(
-        default=True,
+    output_metadata_file: str = Field(
+        default="metadata.csv",
         description=
-        "Whether to dump metadata (e.g., SMILES, unique_id, num_atoms, timings) to a CSV file."
-    )
+        "Output CSV file to dump metadata (e.g., SMILES, unique_id, num_atoms, timings).\n"
+        "# If set to `null`, metadata will not be saved.")
 
     property_method: str | None = Field(
         default=METHOD_AIMNet2,
@@ -349,11 +349,13 @@ def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
 
     mol_prop_outfile = Path(settings.output_molecule_property_file).resolve()
     atom_prop_outfile = Path(settings.output_atom_property_file).resolve()
-    write_molecule_property(out_sts,
-                            filename=str(mol_prop_outfile),
-                            save_metadata=settings.dump_metadata)
+    write_molecule_property(out_sts, filename=str(mol_prop_outfile))
     write_atom_property(out_sts, filename=str(atom_prop_outfile))
 
     logger.info(f"Wrote molecule properties to {mol_prop_outfile}\n"
                 f"Wrote atom properties (XYZ, forces) to {atom_prop_outfile}.")
+    if settings.output_metadata_file:
+        metadata_outfile = Path(settings.output_metadata_file).resolve()
+        write_metadata(out_sts, filename=str(metadata_outfile))
+        logger.info(f"Wrote metadata to {metadata_outfile}")
     return out_sts

@@ -26,6 +26,8 @@ ENV_KEY_F_ANION_ENERGY = 'BDE_F_ANION_ENERGY'
 
 FLUORINE_ATOM_NUMBER = 9
 
+DEFLUORINED_ST_UID_TEMPLATE = "{unique_id}_defluorined"
+
 
 def _get_f_anion_energy(pyscf_options):
     """
@@ -109,13 +111,13 @@ def calc_fluoride_bond_dissociation_energy(
         defluorined_st.property[DFT_ENERGY_KEY] + e_f_anion -
         st.property[DFT_ENERGY_KEY]) * HARTREE_TO_EV
 
-    # Save info of defluorined_st to the original structure
-    st.property['_old_f_bonded_atom'] = defluorined_st.metadata[
-        'old_f_bonded_atom']
-    st.property['_smiles_noF'] = defluorined_st.smiles
-    st.property['_charge_noF'] = defluorined_st.charge
-    st.property[f'_e_tot_Eh_noF'] = defluorined_st.property[DFT_ENERGY_KEY]
-    st.property['_xyz_noF'] = defluorined_st.to_xyz_block()
+    # Dump defluorined_st to the original structure
+    st.metadata['old_f_bonded_atom'] = defluorined_st.metadata.pop(
+        'old_f_bonded_atom', None)
+    # st.property['_smiles_noF'] = defluorined_st.smiles
+    # st.property['_xyz_noF'] = defluorined_st.to_xyz_block()
+
+    st.metadata['defluorined_st'] = defluorined_st
 
     return st
 
@@ -249,7 +251,8 @@ def get_defluorined_st(st: Structure,
     # F- is closed-shell, so removing it won't change the multiplicity
     defluorined_st.multiplicity = st.multiplicity
 
-    defluorined_st.unique_id = f'{st.unique_id}_defluorined'
+    defluorined_st.unique_id = DEFLUORINED_ST_UID_TEMPLATE.format(
+        unique_id=st.unique_id)
     defluorined_st.metadata['old_f_bonded_atom'] = f_bonded_atom_symbol
 
     return defluorined_st

@@ -3,6 +3,9 @@ from functools import lru_cache
 
 from ..constants import ANGSTROM_TO_BOHR, HARTREE_TO_EV, VDW_RADII_ANGSTROM
 from ..import_util import import_cupy
+from ..util import get_default_logger
+
+logger = get_default_logger()
 
 # If the absolute value of the ESP for closed-shell systems is greater than this
 # threshold, the ESP calculation is considered to be unreliable.
@@ -217,7 +220,7 @@ def get_esp_range(mol, grids: np.ndarray,
         esp_max = max(esp_vals) * HARTREE_TO_EV
         if abs(esp_min) > _ESP_ABS_THRESHOLD_EV_SPIN0 or abs(
                 esp_max) > _ESP_ABS_THRESHOLD_EV_SPIN0:
-            raise ValueError(
+            logger.warning(
                 f"ESP range (min: {esp_min:.2f} eV, max: {esp_max:.2f} eV) for "
                 f"closed shell molecule is beyond the expected range (-{_ESP_ABS_THRESHOLD_EV_SPIN0} to {_ESP_ABS_THRESHOLD_EV_SPIN0} eV)."
             )
