@@ -172,7 +172,11 @@ def _combine_csv_files(batch_dirs: list[Path], filename: str) -> None:
         return
 
     # Read and combine all CSV files
-    dataframes = [polars.read_csv(csv_file) for csv_file in csv_files]
+    schema_overrides = {'unique_id': polars.datatypes.Utf8}
+    dataframes = [
+        polars.read_csv(csv_file, schema_overrides=schema_overrides)
+        for csv_file in csv_files
+    ]
     combined_df = polars.concat(dataframes, how='diagonal')
 
     # Write combined df to a new CSV file in the parent directory

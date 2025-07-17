@@ -4,8 +4,9 @@ from rdkit import Chem
 
 from .settings import ValidationError
 
-SMILES_COL_NAMES = ("smiles", "Smiles", "SMILES", "smile", "SMILE",
-                    "canonical_smile", "smi")
+SMILES_COL_NAMES = ("smiles", "Smiles", "SMILES", "canonical_smiles", "smile",
+                    "SMILE", "canonical_smile", "smi", "CANONICAL SMILES",
+                    "CANONICAL_SMILES")
 
 PathLike = str | Path
 
