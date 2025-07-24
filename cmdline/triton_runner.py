@@ -141,6 +141,11 @@ def main():
             )
             available_nodes = list(
                 set(triton_server_util.FS_NODE_NAMES) - set(active_nodes))
+            # Start servers on nodes with the largest node IDs first.
+            # This helps reduce conflicts with other SLURM jobs, since SLURM allocates nodes
+            # in alphabetical order. Using the higher-sorted (often less-used) nodes first
+            # minimizes the chance of resource competing with other jobs.
+            available_nodes.sort(reverse=True)
             new_nodes = available_nodes[:remain_n_nodes]
             active_nodes.extend(new_nodes)
             triton_server_util.start_server_on_nodes(node_names=new_nodes)
