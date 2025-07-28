@@ -185,7 +185,7 @@ def _stop_single_server(node_name: str) -> tuple[str, float, bool]:
         return node_name, exec_time, False
 
 
-def stop_server_on_nodes(node_names: list[int]) -> None:
+def stop_server_on_nodes(node_names: list[int]) -> list[str]:
     """
     Stop the Triton server on the specified nodes in parallel.
 
@@ -200,17 +200,19 @@ def stop_server_on_nodes(node_names: list[int]) -> None:
             executor.submit(_stop_single_server, node_name=node_name)
             for node_name in node_names
         ]
-
+        stopped_nodes = []
         for future in as_completed(futures):
             node, exec_time, success = future.result()
             if success:
+                stopped_nodes.append(node)
                 logger.debug(
                     f"Stopped Triton server on {node} in {exec_time:.2f} seconds."
                 )
 
     logger.info(
-        f"Stopped Triton server on {len(node_names)} nodes in {time.perf_counter() - t_start:.2f} seconds."
+        f"Stopped Triton server on {len(stopped_nodes)} nodes in {time.perf_counter() - t_start:.2f} seconds."
     )
+    return stopped_nodes
 
 
 #########################

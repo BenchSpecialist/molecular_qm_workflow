@@ -107,6 +107,14 @@ def _parse_args():
         f"Get list of active Triton server nodes and write to {_ACTIVE_NODES_FILE}."
     )
 
+    group.add_argument(
+        "--stop-server-nodes-in-file",
+        type=str,
+        metavar="NODE_NAMES_FILE",
+        default=None,
+        help=
+        f"Path to the text file with node names to stop: {_ACTIVE_NODES_FILE}")
+
     parser.add_argument("--write-default-config",
                         type=str,
                         help="Write the default configuration file and exit.")
@@ -193,6 +201,17 @@ def main():
         active_node_file.write_text("\n".join(active_nodes))
         print(f"Active Triton server nodes: {active_nodes}")
         print(f"Wrote {active_node_file}.")
+        return
+
+    if node_names_file := args.stop_server_nodes_in_file:
+        nodes_to_stop = [
+            node
+            for node in Path(node_names_file).read_text().strip().splitlines()
+            if node.strip()  # Filter out empty lines
+        ]
+
+        stopped_nodes = triton_server_util.stop_server_on_nodes(nodes_to_stop)
+        print(f"Stopped Triton server nodes: {stopped_nodes}")
         return
 
     if total_nodes_requested := args.request_num_server_nodes:
