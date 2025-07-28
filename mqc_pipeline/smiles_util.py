@@ -64,9 +64,8 @@ def one_smiles_to_st(smiles: str) -> Structure:
     except Exception as e:
         with open("FAILED_INPUTS.txt", 'a') as fp:
             fp.write(f'{smiles}: pybel - {str(e)}\n')
-        logger.error(
-            f"{smiles}: Failed to generate 3D structure using RDKit ({str(rdk_e)}) "
-            f"and OpenBabel ({str(e)}).")
+        logger.error(f"{smiles}: Failed to generate 3D structure using RDKit "
+                     f"and OpenBabel ({str(e)}).")
         return None  # Explicitly return None when both methods fail
 
 

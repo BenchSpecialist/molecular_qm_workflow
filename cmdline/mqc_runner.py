@@ -235,8 +235,8 @@ def main():
                                          Path.cwd())).resolve()
 
         batch_dirs = [
-            d for d in output_dir.iterdir()
-            if d.is_dir() and d.name.startswith("batch_")
+            d for d in output_dir.iterdir() if d.is_dir() and (
+                d.name.startswith("batch_") or d.name.startswith("fs-sn-"))
         ]
         if batch_dirs:
             for outfile in OUTFILES:
