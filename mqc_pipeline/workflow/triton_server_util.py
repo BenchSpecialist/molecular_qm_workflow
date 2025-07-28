@@ -154,6 +154,8 @@ def get_active_server_nodes() -> list[str]:
     print(
         f"Checked {len(FS_NODE_NAMES)} nodes in {time.perf_counter() - t_start:.2f} seconds."
     )
+    # Sort active nodes so nodes with the largest node IDs come first
+    active_nodes.sort(reverse=True)
     return active_nodes
 
 
