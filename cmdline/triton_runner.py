@@ -38,8 +38,12 @@ _PYTHON_EXE = "/mnt/filesystem/dev_renkeh/mqc-env/bin/python"
 
 _ACTIVE_NODES_FILE = "ACTIVE_TRITON_NODES.txt"
 
-# Maximum number of structures per job, 16 requests to Triton server per job to avoid timeout issues.
-MAX_MOLS_PER_JOB = 1024 * int(os.environ.get("MAX_REQUESTS_PER_JOB", 16))
+# Maximum number of structures per job
+# Each request to Triton server takes at most 1024 structures.
+# Limit the number of requests per SLURM job to avoid timeout issues.
+DEFAULT_MAX_REQUESTS_PER_JOB = 12
+MAX_MOLS_PER_JOB = 1024 * int(
+    os.environ.get("MAX_REQUESTS_PER_JOB", DEFAULT_MAX_REQUESTS_PER_JOB))
 
 SLURM_CMD = """#!/bin/bash
 #SBATCH --job-name={JOB_NAME}
