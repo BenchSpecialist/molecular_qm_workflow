@@ -135,10 +135,17 @@ def _parse_args():
     parser.add_argument(
         "--extract-xyz",
         type=str,
-        metavar="XYZ_DIR",
+        nargs=2,
+        metavar=("ATOM_PROP_FILE", "XYZ_DIR"),
         help=
-        "Specify the directory and extract XYZ files from atom_property.csv.")
+        "Extract XYZ files from the specified atom_property file to the given directory."
+    )
 
+    parser.add_argument(
+        "--extended-xyz",
+        action="store_true",
+        help="Use extended XYZ format for output XYZ files. "
+        "This flag is only relevant when --extract-xyz is used.")
     return parser.parse_args()
 
 
@@ -193,18 +200,19 @@ def main():
     args = _parse_args()
 
     if args.extract_xyz:
-        atom_csv = Path('atom_property.csv')
+        atom_csv = Path(args.extract_xyz[0]).resolve()
         if not atom_csv.exists():
-            raise SystemExit(f"atom_property.csv not found in {Path.cwd()}.")
+            raise SystemExit(f"{atom_csv} NOT FOUND.")
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             from mqc_pipeline.workflow.io import write_xyz_dir_from_csv
 
-        out_xyz_dir = Path(args.extract_xyz).resolve()
+        out_xyz_dir = Path(args.extract_xyz[1]).resolve()
         num_xyz = write_xyz_dir_from_csv(csv_path=atom_csv,
                                          output_dir=out_xyz_dir,
-                                         extended_xyz=True)
+                                         extended_xyz=args.extended_xyz)
+        print(f"Whether to use extended XYZ format: {args.extended_xyz}")
         print(f"Extracted {num_xyz} XYZ files to {out_xyz_dir}")
         return
 
