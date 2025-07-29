@@ -190,7 +190,9 @@ def add_properties_to_sts(batch_output: dict[str, torch.Tensor],
 
     for i, st in enumerate(sts):
         atom_numbers = filtered_output['numbers'][i]
-        num_atoms = filtered_output['_natom'][i]
+        num_atoms = filtered_output['_natom']
+        if not isinstance(num_atoms, int):
+            num_atoms = filtered_output['_natom'][i]
         assert st.atomic_numbers == atom_numbers[:num_atoms], \
             f'Atom number mismatched: {st.atomic_numbers} with {atom_numbers}'
 
