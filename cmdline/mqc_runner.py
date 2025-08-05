@@ -270,9 +270,19 @@ def main():
             if failed_inputs_files:
                 combined_failed_inputs = output_dir / "FAILED_INPUTS.txt"
                 with open(combined_failed_inputs, 'w') as outfile:
-                    for failed_file in failed_inputs_files:
-                        with open(failed_file, 'r') as infile:
+                    # Handle first file separately to avoid leading newline
+                    if failed_inputs_files:
+                        with open(failed_inputs_files[0], 'r') as infile:
                             outfile.write(infile.read())
+
+                    # Add remaining files with efficient buffered reads
+                    for failed_file in failed_inputs_files[1:]:
+                        with open(failed_file, 'r') as infile:
+                            outfile.write('\n')
+                            # Read in chunks of 1MB for better performance
+                            while chunk := infile.read(1024 * 1024):
+                                outfile.write(chunk)
+
                 print(
                     f"Combined {len(failed_inputs_files)} FAILED_INPUTS.txt into {combined_failed_inputs}"
                 )
