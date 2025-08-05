@@ -236,6 +236,28 @@ def _start_single_server(node_name: str, base_cmd: list[str],
     :param docker_cmds: Docker command to start the server
     :return: ServerStartResult containing operation results
     """
+    # Handle the case when the port:8000 is used by other docker processes
+    docker_cmd = f"srun --nodelist={node_name} sudo docker ps"
+    try:
+        result = subprocess.run(docker_cmd.split(),
+                                capture_output=True,
+                                text=True,
+                                check=True)
+        if "8000->8000/tcp" in result.stdout:
+            error_msg = f"Port 8000 is not available on {node_name}."
+            logger.error(error_msg)
+            return ServerStartResult(node=node_name,
+                                     container_id="",
+                                     success=False,
+                                     error_msg=error_msg)
+    except subprocess.CalledProcessError as e:
+        error_msg = f"Failed to check Docker ps on {node_name}: {str(e)}"
+        logger.error(error_msg)
+        return ServerStartResult(node=node_name,
+                                 container_id="",
+                                 success=False,
+                                 error_msg=error_msg)
+
     cmd = base_cmd + [f'--nodelist={node_name}'] + docker_cmds
 
     try:
