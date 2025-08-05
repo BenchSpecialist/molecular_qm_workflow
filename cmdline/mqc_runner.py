@@ -186,11 +186,23 @@ def _combine_csv_files(batch_dirs: list[Path], filename: str) -> None:
     ]
     combined_df = polars.concat(dataframes, how='diagonal')
 
-    # Write combined df to a new CSV file in the parent directory
-    output_file = batch_dirs[0].parent / filename
-    combined_df.write_csv(output_file)
+    from mqc_pipeline.util import write_df_to_parq_duckdb
 
-    print(f"Combined {len(csv_files)} {filename} files into {output_file}")
+    # Write combined df to a new CSV file in the parent directory
+    if "atom_property" in filename:
+        # Save combined atom table in the compact parquet format as it's much larger
+        # than molecule_property and metadata table
+        output_file = batch_dirs[0].parent / Path(filename).with_suffix(
+            '.parquet')
+        write_df_to_parq_duckdb(combined_df, output_file)
+    else:
+        output_file = batch_dirs[0].parent / filename
+        combined_df.write_csv(output_file)
+
+    logger.info(f'{combined_df.height} rows in {output_file}.')
+    print(
+        f"Combined {len(csv_files)} {filename} files into {output_file}, {combined_df.height} rows"
+    )
 
 
 def main():

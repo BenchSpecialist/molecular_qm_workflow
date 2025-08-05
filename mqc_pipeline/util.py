@@ -143,3 +143,46 @@ def get_optimal_workers(total_inputs: int, min_items_per_worker: int,
 
     # Take the minimum of both constraints
     return min(workers_by_batch, workers_by_cpu)
+
+
+def write_df_to_parq_duckdb(df, output_path) -> None:
+    """
+    Write a DataFrame (Polars or pandas) to a Parquet file using DuckDB.
+
+    This function efficiently converts the input DataFrame to Arrow format
+    and uses DuckDB for optimized Parquet file writing with standard-compliant
+    metadata.
+    """
+    import duckdb
+    from pathlib import Path
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(exist_ok=True, parents=True)
+    temp_view_name = "temp_df"
+
+    # Convert DataFrame to PyArrow table based on its type
+    if hasattr(df, 'to_arrow'):
+        # Polars DataFrame
+        arrow_table = df.to_arrow()
+    elif hasattr(df, 'to_arrow_table'):
+        # pandas DataFrame with pyarrow installed
+        arrow_table = df.to_arrow_table()
+    elif hasattr(df, 'to_dict'):
+        import pyarrow as pa
+        # pandas DataFrame without pyarrow - slower fallback
+        arrow_table = pa.Table.from_pandas(df)
+    else:
+        raise TypeError(
+            f"Unsupported DataFrame type: {type(df)}. Must be a Polars DataFrame or pandas DataFrame."
+        )
+
+    # Register the Arrow table as a DuckDB view
+    duckdb.register(temp_view_name, arrow_table)
+
+    try:
+        # Save as Parquet (with standard-compliant metadata)
+        duckdb.sql(
+            f"COPY {temp_view_name} TO '{output_path}' (FORMAT PARQUET);")
+    finally:
+        # Clean up the registration
+        duckdb.sql(f"DROP VIEW IF EXISTS {temp_view_name}")
