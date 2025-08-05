@@ -21,6 +21,10 @@ Please follow these steps strictly to run the Triton pipeline:
 
 4. Run the pipeline with the configuration file:
     $ triton_runner.py --config <config.yaml>
+
+Other options:
+- To set Triton servers on specific node IDs:
+    $ triton_runner.py --set-server-on-node-ids 1,2,63,64
 """
 import os
 import pickle
@@ -95,6 +99,14 @@ def _parse_args():
         "If requested nodes > active nodes: starts additional servers to reach the target; "
         "If requested nodes < active nodes: uses all currently active nodes; "
         f"active nodes are tracked in: {_ACTIVE_NODES_FILE}.")
+
+    group.add_argument(
+        "--set-server-on-node-ids",
+        type=str,
+        metavar="NODE_IDS",
+        help=
+        "Set Triton servers on specified node IDs (comma-separated, e.g., '32,4,5')"
+    )
 
     group.add_argument("--config",
                        type=str,
@@ -197,6 +209,10 @@ def main():
 
     from mqc_pipeline.workflow import triton_server_util
     if args.get_active_triton_nodes:
+        print(
+            f'WARNING: `triton_runner.py --get-active-triton-nodes` must be run on fs-s-login-001. '
+            'Running it on compute nodes always return empty list.')
+
         active_nodes = triton_server_util.get_active_server_nodes()
         active_node_file.write_text("\n".join(active_nodes))
         print(f"Active Triton server nodes: {active_nodes}")
@@ -212,6 +228,42 @@ def main():
 
         stopped_nodes = triton_server_util.stop_server_on_nodes(nodes_to_stop)
         print(f"Stopped Triton server nodes: {stopped_nodes}")
+        return
+
+    if args.set_server_on_node_ids:
+        from mqc_pipeline.workflow.triton_server_util import FS_NODENAME_TEMPLATE
+        node_ids = [
+            int(node_id.strip())
+            for node_id in args.set_server_on_node_ids.split(',')
+            if node_id.strip()
+        ]
+        node_names = [
+            FS_NODENAME_TEMPLATE.format(NODE_ID=node_id)
+            for node_id in node_ids
+        ]
+
+        # Filter out nodes that are already running Triton server
+        active_nodes = triton_server_util.get_active_server_nodes()
+        nodes_to_start = [
+            name for name in node_names if name not in active_nodes
+        ]
+
+        if nodes_to_start:
+            triton_server_util.start_server_on_nodes(nodes_to_start)
+            print(f"Started Triton server on nodes: {nodes_to_start}")
+
+        if already_active := [
+                name for name in node_names if name in active_nodes
+        ]:
+            print(
+                f"Triton server is already running on nodes: {already_active}")
+
+        # Update active nodes file
+        active_nodes.extend(nodes_to_start)
+        if active_nodes:
+            active_nodes.sort(reverse=True)
+            active_node_file.write_text("\n".join(active_nodes))
+            print(f"Updated {active_node_file} with all active nodes.")
         return
 
     if total_nodes_requested := args.request_num_server_nodes:
