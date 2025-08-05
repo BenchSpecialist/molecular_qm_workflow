@@ -31,6 +31,7 @@ MO_CLIP_RANGE = (-20.0, 20.0)
 BatchInfo = namedtuple('BatchInfo', ['n_atoms_min', 'n_atoms_max'])
 
 BATCH_INFO_FILE = Path("_prop_batch_info.csv")
+_SAVE_BATCH_INFO = False
 
 
 def _log(msg: str, file: Path = BATCH_INFO_FILE) -> None:
@@ -41,6 +42,15 @@ def _log(msg: str, file: Path = BATCH_INFO_FILE) -> None:
         with open(file, 'a') as fp:
             fp.write(f'{msg}\n')
             fp.flush()  # write content immediately
+
+
+def _remove_file_if_exists(file: Path | str) -> None:
+    """
+    Remove file if it exists.
+    """
+    file = Path(file)
+    if file.exists():
+        file.unlink()
 
 
 @lru_cache(maxsize=1)
@@ -266,9 +276,10 @@ def run_one_batch(
 
     add_properties_to_sts(batch_output, sts)
 
-    _log(
-        f'{batch_id},{str(device)},{len(sts)},{info.n_atoms_min},{info.n_atoms_max},{time.perf_counter() - t_start:.2f}'
-    )
+    if _SAVE_BATCH_INFO:
+        _log(
+            f'{batch_id},{str(device)},{len(sts)},{info.n_atoms_min},{info.n_atoms_max},{time.perf_counter() - t_start:.2f}'
+        )
 
     return sts
 
@@ -323,11 +334,11 @@ def run_parallel(
 
     t_start = time.perf_counter()
 
-    # Remove exiting BATCH_INFO_FILE
-    if BATCH_INFO_FILE.exists():
-        BATCH_INFO_FILE.unlink()
-    # Add header to BATCH_INFO_FILE
-    _log(msg='batch_id,device,num_mols,n_atoms_min,n_atoms_max,time')
+    if _SAVE_BATCH_INFO:
+        # Remove exiting BATCH_INFO_FILE
+        _remove_file_if_exists(BATCH_INFO_FILE)
+        # Add header to BATCH_INFO_FILE
+        _log(msg='batch_id,device,num_mols,n_atoms_min,n_atoms_max,time')
 
     if torch.cuda.is_available():
         # GPU processing - split structures across available GPUs
@@ -376,8 +387,6 @@ def run_parallel(
     )
 
     # Remove .lock file after processing
-    lock_file = Path(f'{BATCH_INFO_FILE.stem}.csv.lock')
-    if lock_file.exists():
-        lock_file.unlink()
+    _remove_file_if_exists(f'{BATCH_INFO_FILE.stem}.csv.lock')
 
     return out_sts
