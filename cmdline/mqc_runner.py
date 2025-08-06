@@ -42,6 +42,8 @@ _CACHED_CONFIG = "_config.pkl"
 _BATCH_SMILES_PKL = "_input_smiles.pkl"
 _BATCH_STS_PKL = "_input_sts.pkl"
 
+OUT_FORMATS = ['csv', 'parq']
+
 # Output files in batch directories
 OUTFILES = (
     "molecule_property.csv",
@@ -118,9 +120,14 @@ def _parse_args():
         "For debug: Batch inputs, write sbatch script and print command without executing it. "
     )
 
-    parser.add_argument("--combine-results",
-                        action="store_true",
-                        help="Combine results from all batches.")
+    parser.add_argument(
+        "--combine-results",
+        type=str,
+        metavar='CSV_OR_PARQUET',
+        choices=OUT_FORMATS,
+        help=
+        "Combine results from all batches into a new file with the specified format. "
+        "Supported formats: 'csv', 'parq'. ")
 
     parser.add_argument(
         "--cleanup",
@@ -163,19 +170,23 @@ def _distribute_inputs(num_inputs, num_jobs) -> list[int]:
     return batch_sizes
 
 
-def _combine_csv_files(batch_dirs: list[Path], filename: str) -> None:
+def _combine_csv_files(batch_dirs: list[Path],
+                       filename: str,
+                       mol_out_format='parq') -> None:
     """
     Combine CSV files with the same name from all batch directories.
 
     :param output_dir: List of batch subdirectories
     :param filename: Name of the CSV file to combine (e.g., "molecule_property.csv")
+    :param mol_out_format: Output format for the combined molecule property table
+                           and metadata table, either 'csv' or 'parq'.
     """
+    mol_out_format = mol_out_format.lower()
     csv_files = [
         batch_dir / filename for batch_dir in batch_dirs
         if (batch_dir / filename).exists()
     ]
     if not csv_files:
-        print(f"No {filename} files found in batch directories")
         return
 
     # Read and combine all CSV files
@@ -188,9 +199,9 @@ def _combine_csv_files(batch_dirs: list[Path], filename: str) -> None:
 
     from mqc_pipeline.util import write_df_to_parq_duckdb
 
-    # Write combined df to a new CSV file in the parent directory
-    if "atom_property" in filename:
-        # Save combined atom table in the compact parquet format as it's much larger
+    # Write combined df in the parent directory
+    if "atom_property" in filename or (mol_out_format == 'parq'):
+        # Always save combined atom table in the compact parquet format as it's much larger
         # than molecule_property and metadata table
         output_file = batch_dirs[0].parent / Path(filename).with_suffix(
             '.parquet')
@@ -250,7 +261,7 @@ def main():
         if not args.combine_results:
             return
 
-    if args.combine_results:
+    if out_format := args.combine_results:
         output_dir = Path(os.environ.get("MQC_OUTPUT_DIR",
                                          Path.cwd())).resolve()
 
@@ -260,7 +271,9 @@ def main():
         ]
         if batch_dirs:
             for outfile in OUTFILES:
-                _combine_csv_files(batch_dirs, outfile)
+                _combine_csv_files(batch_dirs,
+                                   outfile,
+                                   mol_out_format=out_format)
 
             # Combine "FAILED_INPUTS.txt" files if exist
             failed_inputs_files = [
