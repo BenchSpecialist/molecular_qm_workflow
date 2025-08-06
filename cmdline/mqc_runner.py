@@ -242,16 +242,15 @@ def main():
     if args.cleanup:
         output_dir = Path(os.environ.get("MQC_OUTPUT_DIR",
                                          Path.cwd())).resolve()
-        # Cleanup SLURM scripts/logs, and cached config
+        # Cleanup SLURM logs and cached pickle files
         for pkl_file in (_CACHED_CONFIG, _BATCH_SMILES_PKL, _BATCH_STS_PKL):
             pkl_path = output_dir / pkl_file
             if pkl_path.exists():
                 pkl_path.unlink(missing_ok=True)
                 print(f"Removed {pkl_path}")
         dirs_to_remove = [
-            d for d in (output_dir / _SLURM_SH_DIR, output_dir / _SLURM_LOG_DIR)
-            if d.exists()
-        ] # yapf:disable
+            d for d in (output_dir / _SLURM_LOG_DIR, ) if d.exists()
+        ]
         for dir in dirs_to_remove:
             try:
                 shutil.rmtree(dir)
@@ -516,17 +515,14 @@ def _submit_one_slurm_job(config: PipelineSettings,
     """
     Launch a single sbatch job.
     """
-    output_dir = Path(config.output_dir).resolve()
-    _slurm_sh_dir = output_dir / _SLURM_SH_DIR
-    _slurm_sh_dir.mkdir(parents=True, exist_ok=True)
-    sbatch_sh_path = _slurm_sh_dir / f"submit_{batch_id}.sh"
-
-    _slum_log_dir = output_dir / _SLURM_LOG_DIR
-    _slum_log_dir.mkdir(parents=True, exist_ok=True)
-    job_log = _slum_log_dir / f"{batch_id}.log"
-
     # Get absolute paths for the batch input file (in pkl format)
     batch_file = Path(batch_file).resolve()
+    sbatch_sh_path = batch_file.parent / f"submit.sh"
+
+    output_dir = Path(config.output_dir).resolve()
+    job_log_dir = output_dir / _SLURM_LOG_DIR
+    job_log_dir.mkdir(parents=True, exist_ok=True)
+    job_log = job_log_dir / f"{batch_file.parent.name}.log"
 
     # Create the SLURM command
     slurm_cmd = SLURM_CMD.format(JOB_NAME=config.job_name,

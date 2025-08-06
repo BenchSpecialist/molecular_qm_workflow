@@ -371,8 +371,6 @@ def main():
 
                 batch_dir = output_dir / job_dir_name
                 batch_dir.mkdir(parents=True, exist_ok=True)
-                logger.info(
-                    f'{job_dir_name}: {len(batch_smiles)} SMILES strings')
 
                 batch_file = batch_dir / "input_smiles.pkl"
                 with open(batch_file, 'wb') as fh:
@@ -383,43 +381,38 @@ def main():
                         output_dir=output_dir,
                         node_name=node_name,
                         cached_config=str(_cached_config_path),
-                        batch_file=str(batch_file),
-                        job_suffix=f"_{job_idx}"  # Add suffix to job name
-                    )
+                        batch_file=str(batch_file))
                 if job_id:
-                    submitted_jobs.append((job_dir_name, job_id))
+                    submitted_jobs.append(
+                        (job_dir_name, job_id, len(batch_smiles)))
 
                 # Move to next node in round-robin fashion
                 node_idx = (node_idx + 1) % len(active_nodes)
 
         job_info = tabulate(submitted_jobs,
-                            headers=['Job Directory', 'Job ID'],
+                            headers=['Job Directory', 'Job ID', 'Num_SMILES'],
                             tablefmt="simple",
-                            colalign=("left", "left"))
-        logger.info(f"Submitted jobs:\n{job_info}")
+                            colalign=("left", "left", "right"))
+        logger.info(f"Submitted {len(submitted_jobs)} jobs:\n{job_info}")
 
 
-def _submit_job(output_dir: str,
-                node_name: str,
-                cached_config: str,
-                batch_file: str,
-                job_suffix: str = "") -> str | None:
+def _submit_job(output_dir: str, node_name: str, cached_config: str,
+                batch_file: str) -> str | None:
     """
     Launch a single sbatch job
     """
-    script_dir = output_dir / "slurm_scripts"
-    script_dir.mkdir(parents=True, exist_ok=True)
-    script_path = script_dir / f"{node_name}{job_suffix}.sh"
+    # Get absolute paths for the batch input file (in pkl format)
+    batch_file = Path(batch_file).resolve()
+    batch_dir_name = batch_file.parent.name
+
+    script_path = batch_file.parent / f"submit.sh"
 
     job_log_dir = output_dir / "slurm_logs"
     job_log_dir.mkdir(parents=True, exist_ok=True)
-    job_log_path = job_log_dir / f"{node_name}{job_suffix}.log"
-
-    # Get absolute paths for the batch input file (in pkl format)
-    batch_file = Path(batch_file).resolve()
+    job_log_path = job_log_dir / f"{batch_dir_name}.log"
 
     # Create the SLURM command
-    slurm_cmd = SLURM_CMD.format(JOB_NAME=f"{node_name[-3:]}{job_suffix}",
+    slurm_cmd = SLURM_CMD.format(JOB_NAME=batch_dir_name.lstrip('fs-sn-'),
                                  JOB_LOG=job_log_path,
                                  NODE_NAME=node_name,
                                  PYTHON_EXE=_PYTHON_EXE,
