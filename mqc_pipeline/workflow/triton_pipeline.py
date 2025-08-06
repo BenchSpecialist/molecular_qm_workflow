@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from rdkit import Chem
 
-from ..smiles_util import smiles_to_structure_batch
+from ..smiles_util import smiles_to_structure_batch, get_canonical_smiles_ob
 from ..batch_optimize import FAILED_INPUTS_FILE, optimize_sts_by_triton
 from .._aimnet import property_inference
 from ..property import combustion_heat
@@ -177,7 +177,6 @@ class TritonPipelineSettings(BaseModel):
 
 
 def _log_failed_inputs(error_msg: str, error_file=FAILED_INPUTS_FILE) -> None:
-    logger.error(error_msg)
     with open(error_file, 'a') as fp:
         fp.write(f'{error_msg}\n')
 
@@ -289,6 +288,46 @@ def add_vdw_volume_batch(sts: list, num_workers: int = TOTAL_CPUS_PER_NODE):
         f"{len(results)} structures")
 
 
+def _get_canonical_smiles_for_st(st) -> str | None:
+    ob_smiles = get_canonical_smiles_ob(st.to_xyz_block())
+    rdkit_mol = Chem.MolFromSmiles(ob_smiles)
+    if rdkit_mol is None:
+        _log_failed_inputs(
+            f"{st.smiles}: relaxed XYZs-converted SMILES '{ob_smiles}' failed the sanitization."
+        )
+        return None
+
+    return Chem.MolToSmiles(rdkit_mol, isomericSmiles=False, canonical=True)
+
+
+def gen_can_smiles_and_sanitize_xyz(sts: list,
+                                    num_workers: int = TOTAL_CPUS_PER_NODE
+                                    ) -> list:
+    """
+    Generate canonical SMILES strings from a batch of structures in parallel;
+    relaxed structures that failed to pass sanitization will be filtered out.
+    """
+    t_start = time.perf_counter()
+
+    with multiprocessing.Pool(processes=num_workers) as pool:
+        results = pool.map(_get_canonical_smiles_for_st, sts)
+
+    # Add canonical SMILES values to each structure
+    for st, can_smiles in zip(sts, results):
+        st.property['canonical_smiles'] = can_smiles
+
+    # Filter out structures with None canonical_smiles
+    valid_sts = [
+        st for st in sts if st.property.get('canonical_smiles') is not None
+    ]
+
+    logger.info(
+        f"gen_can_smiles_and_sanitize_xyz ({num_workers} workers): {time.perf_counter() - t_start:.2f} seconds, "
+        f"{len(valid_sts)}/{len(sts)} valid structures")
+
+    return valid_sts
+
+
 def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
     t_start = time.perf_counter()
 
@@ -309,24 +348,29 @@ def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
     # Optimize structures using Triton inference server
     opt_sts = optimize_sts_by_triton(init_sts, batch_size=BATCH_SIZE_PER_GPU)
 
+    # Generate canonical SMILES strings from optimized coordinates
+    # Relaxed XYZs that fail the sanitization are discarded.
+    valid_opt_sts = gen_can_smiles_and_sanitize_xyz(opt_sts,
+                                                    num_workers=num_cpus)
+
     # Get properties for optimized structures (ML inference or DFT)
     if settings.property_method == METHOD_AIMNet2:
+        out_sts = property_inference.run_parallel(
+            valid_opt_sts,
+            mo_range=settings.inference_mo_range,
+            esp_range=settings.inference_esp_range,
+            max_batch_size=settings.inference_max_batch_size,
+            num_cpu_workers=num_cpus)
+
         # Add combustion enthalpy (using Triton energy)
         if AdditionalProperty.COMBUSTION_HEAT.value in settings.post_infer_additional_properties:
-            calc_combustion_heat_batch(opt_sts,
+            calc_combustion_heat_batch(out_sts,
                                        energy_key='triton_energy_ev',
                                        num_workers=num_cpus)
 
         # Add vdw_volume (using optimized structures)
         if AdditionalProperty.VDW_VOLUME.value in settings.post_infer_additional_properties:
-            add_vdw_volume_batch(opt_sts, num_workers=num_cpus)
-
-        out_sts = property_inference.run_parallel(
-            opt_sts,
-            mo_range=settings.inference_mo_range,
-            esp_range=settings.inference_esp_range,
-            max_batch_size=settings.inference_max_batch_size,
-            num_cpu_workers=num_cpus)
+            add_vdw_volume_batch(out_sts, num_workers=num_cpus)
 
     elif settings.property_method == METHOD_DFT:
         from ..property import get_properties_main
@@ -338,7 +382,7 @@ def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
                 esp_options=ESPGridsOption(),
                 return_esp_range=True,
                 return_combustion_heat=True,
-            ) for st in opt_sts
+            ) for st in valid_opt_sts
         ]
 
     time_cost = time.perf_counter() - t_start
