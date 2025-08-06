@@ -19,6 +19,9 @@ logger = get_default_logger()
 _RDKIT_MAX_ATTEMPTS = 100
 _PYBEL_FORCEFILED = "mmff94"
 
+BOND_LENGTH_MIN = 0.5  # angstrom
+BOND_LENGTH_MAX = 3.6  # angstrom
+
 
 def smiles_to_structure(smiles: str,
                         method: str = 'openbabel',
@@ -64,8 +67,6 @@ def one_smiles_to_st(smiles: str) -> Structure:
     except Exception as e:
         with open("FAILED_INPUTS.txt", 'a') as fp:
             fp.write(f'{smiles}: pybel - {str(e)}\n')
-        logger.error(f"{smiles}: Failed to generate 3D structure using RDKit "
-                     f"and OpenBabel ({str(e)}).")
         return None  # Explicitly return None when both methods fail
 
 
@@ -83,20 +84,20 @@ def smiles_to_structure_batch(smiles_list: list[str],
         return []
 
     t_start = time.perf_counter()
-    logger.info(f"smiles_to_structure_batch: {num_workers} workers")
     with Pool(processes=num_workers) as pool:
         try:
             # Use starmap if we need to pass multiple arguments
             results = pool.map(one_smiles_to_st, smiles_list)
-            logger.info(
-                f"smiles_to_structure_batch: {time.perf_counter() - t_start:.2f} seconds "
-                f"to embed {len(smiles_list)} SMILES strings.")
             # filter out None results (failed conversions)
-            return [x for x in results if x is not None]
-        except Exception as e:
-            logger.error(
-                f"smiles_to_structure_batch: {len(smiles_list)} SMILES, error - {str(e)}"
+            success_results = [x for x in results if x is not None]
+            logger.info(
+                f"smiles_to_structure_batch ({num_workers} workers): {time.perf_counter() - t_start:.2f} seconds, "
+                f"{len(success_results)}/{len(smiles_list)} embedded geometries"
             )
+
+            return success_results
+        except Exception as e:
+            logger.error(f"smiles_to_structure_batch: {str(e)}")
 
 
 @lru_cache(maxsize=1)
@@ -137,7 +138,7 @@ def smiles_to_structure_pybel(smiles: str,
     mol.localopt(forcefield=forcefield, steps=500)
 
     # Check if the OpenBabel-generated geometry is physical:
-    # bond distances should be in the range of 0.5 angstrom ~ 3 angstrom
+    # bond distances should be in a resonable range
     ob_mol = mol.OBMol
     bond_distances = [
         np.linalg.norm(
@@ -145,8 +146,12 @@ def smiles_to_structure_pybel(smiles: str,
             np.array(mol.atoms[bond.GetEndAtomIdx() - 1].coords))
         for bond in pybel.ob.OBMolBondIter(ob_mol)
     ]
-    if any(distance < 0.5 or distance > 3.0 for distance in bond_distances):
-        bd_err_msg = f"{smiles}: Unphysical bond distances(d<0.5 or d>3.) in the OpenBabel conformer"
+    unphysical_bond_lengths = [
+        float(distance) for distance in bond_distances
+        if distance < BOND_LENGTH_MIN or distance > BOND_LENGTH_MAX
+    ]
+    if len(unphysical_bond_lengths) > 0:
+        bd_err_msg = f"{smiles}: Unphysical bond distances in the OpenBabel geometry:{unphysical_bond_lengths}"
         logger.error(bd_err_msg)
         raise RuntimeError(bd_err_msg)
 
@@ -213,14 +218,17 @@ def smiles_to_structure_rdk(smiles: str,
     # Get conformer with 3D coordinates
     conf = mol.GetConformer()
 
-    # Check if the RDKit-generated geometry is physical:
-    # bond distances should be in the range of 0.5 angstrom ~ 3 angstrom
+    # Check if the RDKit-generated geometry is physical
     bond_distances = [
         GetBondLength(conf, bond.GetBeginAtomIdx(), bond.GetEndAtomIdx())
         for bond in mol.GetBonds()
     ]
-    if any(distance < 0.5 or distance > 3.0 for distance in bond_distances):
-        bd_err_msg = f"{smiles}: Unphysical bond distances(d<0.5 or d>3.) in the RDKit conformer."
+    unphysical_bond_lengths = [
+        float(distance) for distance in bond_distances
+        if distance < BOND_LENGTH_MIN or distance > BOND_LENGTH_MAX
+    ]
+    if len(unphysical_bond_lengths) > 0:
+        bd_err_msg = f"{smiles}: Unphysical bond distances in the RDKit conformer:{unphysical_bond_lengths}"
         logger.error(bd_err_msg)
         raise RuntimeError(bd_err_msg)
 
@@ -309,6 +317,10 @@ def get_canonical_smiles_for_xyz(xyz_block: str) -> str:
     """
     ob_can_smiles = get_canonical_smiles_ob(xyz_block)
     rdkit_mol = Chem.MolFromSmiles(ob_can_smiles)
+    if rdkit_mol is None:
+        raise ValueError(
+            f"get_canonical_smiles_for_xyz: '{ob_can_smiles}' failed sanitization of the molecule."
+        )
     return Chem.MolToSmiles(rdkit_mol, isomericSmiles=False, canonical=True)
 
 
