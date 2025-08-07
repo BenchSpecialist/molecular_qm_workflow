@@ -1,0 +1,242 @@
+#!/mnt/filesystem/dev_renkeh/mqc-env/bin/python
+"""
+Cmdline utility for interacting with Wasabi S3 storage.
+
+To start, first set the environment variables for Wasabi access:
+```bash
+export WASABI_ACCESS_KEY="your_access_key"
+export WASABI_SECRET_KEY="your_secret_key"
+```
+
+Usage:
+- List all buckets:
+    $ wasabi_util --ls-buckets
+
+- List objects in the specified bucket:
+    $ wasabi_util --ls-objects <bucket_name>
+
+- Upload a file to a bucket:
+    $ wasabi_util --upload <local_file> <bucket_name> <remote_path>
+
+- Download a file from a bucket:
+    $ wasabi_util --download <bucket_name> <remote_path>
+"""
+import os
+import argparse
+from tqdm import tqdm
+from pathlib import Path
+
+import boto3
+from botocore.exceptions import ClientError
+
+wasabi_access_key = os.getenv('WASABI_ACCESS_KEY')
+wasabi_secret_key = os.getenv('WASABI_SECRET_KEY')
+
+if wasabi_access_key is None or wasabi_secret_key is None:
+    raise SystemExit(
+        "Environment variables 'WASABI_ACCESS_KEY' and 'WASABI_SECRET_KEY' not found. "
+        "Please set them in your environment or .bashrc file.")
+
+s3_client = boto3.client('s3',
+                         endpoint_url='https://s3.wasabisys.com',
+                         aws_access_key_id=wasabi_access_key,
+                         aws_secret_access_key=wasabi_secret_key,
+                         region_name='us-east-1')
+# Current Buckets:
+# - materials-development
+# - sesai
+# - snowflake-staging
+
+
+def get_human_readable_size(size_bytes) -> str:
+    """
+    Convert file size to human-readable format.
+
+    :param path: Path to the file
+    :return: Human-readable size string, e.g., "1.23 MB"
+    """
+    units = ['B', 'KB', 'MB', 'GB', 'TB']
+    size = float(size_bytes)
+    unit_index = 0
+
+    while size >= 1024 and unit_index < len(units) - 1:
+        size /= 1024
+        unit_index += 1
+
+    return f"{size:.2f} {units[unit_index]}"
+
+
+def get_all_buckets() -> list[str]:
+    try:
+        response = s3_client.list_buckets()
+        if not response['Buckets']:
+            return []
+        return [bucket['Name'] for bucket in response['Buckets']]
+    except ClientError as e:
+        print(f"Error: {e}")
+        return []
+
+
+def get_objects_in_bucket(bucket_name: str) -> list[str]:
+    try:
+        response = s3_client.list_objects_v2(Bucket=bucket_name)
+        if 'Contents' in response:
+            return [obj for obj in response['Contents']]
+        else:
+            print("Bucket is empty")
+    except ClientError as e:
+        print(f"Error: {e}")
+        return []
+
+
+def list_object_sizes(bucket_name: str) -> None:
+    objects = get_objects_in_bucket(bucket_name)
+    if not objects:
+        print(f"No objects found in bucket '{bucket_name}'.")
+        return
+
+    print(f"Objects in bucket '{bucket_name}':")
+    for obj in objects:
+        print(f"{obj['Key']}: {get_human_readable_size(obj['Size'])}")
+
+
+def get_object_keys(bucket_name: str) -> list[str]:
+    objects = get_objects_in_bucket(bucket_name)
+    return [obj['Key'] for obj in objects] if objects else []
+
+
+def upload_file(local_file_path: str,
+                bucket_name: str,
+                object_key: str | None = None) -> None:
+    """
+    Upload a file to Wasabi S3 bucket.
+
+    :param local_file_path: Path to the local file to upload
+    :param bucket_name: Name of the destination bucket
+    :param object_key: Key (path) to use in the bucket, defaults to filename
+    """
+    if object_key is None:
+        object_key = Path(local_file_path).name
+
+    try:
+        file_size = Path(local_file_path).stat().st_size
+        with tqdm(total=file_size,
+                  unit='B',
+                  unit_scale=True,
+                  desc=f"Uploading {Path(local_file_path).name}") as pbar:
+
+            def callback(bytes_transferred):
+                pbar.update(bytes_transferred)
+
+            s3_client.upload_file(local_file_path,
+                                  bucket_name,
+                                  object_key,
+                                  Callback=callback)
+
+        print(f"Upload completed: '{bucket_name}/{object_key}'")
+    except ClientError as e:
+        print(f"Error: {e}")
+
+
+def download_file(bucket_name: str,
+                  object_key: str,
+                  local_file_path: Path | None = None) -> None:
+    """
+    Download a file from Wasabi S3 bucket.
+
+    :param bucket_name: Name of the source bucket
+    :param object_key: Key (path) of the object in the bucket
+    :param local_file_path: Path to save the file locally, defaults to current directory with original filename
+    """
+    if local_file_path is None:
+        local_file_path = Path.cwd() / Path(object_key).name
+
+    try:
+        # Get object size for progress tracking
+        response = s3_client.head_object(Bucket=bucket_name, Key=object_key)
+        file_size = response['ContentLength']
+
+        with tqdm(total=file_size,
+                  unit='B',
+                  unit_scale=True,
+                  desc=f"Downloading {Path(object_key).name}") as pbar:
+
+            def callback(bytes_transferred):
+                pbar.update(bytes_transferred)
+
+            s3_client.download_file(bucket_name,
+                                    object_key,
+                                    str(local_file_path),
+                                    Callback=callback)
+
+        print(
+            f"Downloaded '{bucket_name}/{object_key}' to '{local_file_path}'")
+    except ClientError as e:
+        print(f"Error: {e}")
+
+
+def main():
+    parser = argparse.ArgumentParser(usage=__doc__)
+    parser.add_argument('--ls-buckets',
+                        action='store_true',
+                        help="List all buckets")
+
+    parser.add_argument('--ls-objects',
+                        type=str,
+                        metavar='BUCKET',
+                        help="List objects in a bucket")
+
+    parser.add_argument(
+        '--upload',
+        nargs=3,
+        metavar=('LOCAL_FILE', 'BUCKET', 'REMOTE_PATH'),
+        help=
+        "Upload a local file to a specified bucket with the given remote path")
+
+    parser.add_argument('--download',
+                        nargs=2,
+                        metavar=('BUCKET', 'REMOTE_PATH'),
+                        help="Download a file from a specified bucket")
+
+    args = parser.parse_args()
+
+    buckets = get_all_buckets()
+
+    def _validate_bucket(bucket_name: str):
+        if bucket_name not in buckets:
+            raise SystemExit(f"Bucket '{bucket_name}' does not exist.")
+
+    if args.ls_buckets:
+        if not buckets:
+            print("No buckets found.")
+        else:
+            print('\n'.join(buckets))
+        return
+
+    if bucket_name := args.ls_objects:
+        _validate_bucket(bucket_name)
+        list_object_sizes(bucket_name)
+        return
+
+    if args.upload:
+        local_file, bucket_name, object_key = args.upload
+        _validate_bucket(bucket_name)
+        upload_file(local_file, bucket_name, object_key)
+        return
+
+    if args.download:
+        bucket_name, object_key = args.download
+        # Validate bucket existence
+        _validate_bucket(bucket_name)
+        # Check if the object exists in the bucket
+        available_object_keys = get_object_keys(bucket_name)
+        if object_key not in available_object_keys:
+            raise SystemExit(
+                f"Object '{object_key}' does not exist in bucket '{bucket_name}'."
+            )
+        download_file(bucket_name, object_key)
+        return
+
+
+if __name__ == "__main__":
+    main()
