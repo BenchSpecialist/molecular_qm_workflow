@@ -20,7 +20,7 @@ _RDKIT_MAX_ATTEMPTS = 100
 _PYBEL_FORCEFILED = "mmff94"
 
 BOND_LENGTH_MIN = 0.5  # angstrom
-BOND_LENGTH_MAX = 3.6  # angstrom
+BOND_LENGTH_MAX = 3.5  # angstrom
 
 
 def smiles_to_structure(smiles: str,
