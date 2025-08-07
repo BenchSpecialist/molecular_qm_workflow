@@ -60,7 +60,7 @@ class TritonPipelineSettings(BaseModel):
         description=
         "Output CSV/Parquet file to save atom-level properties (XYZ, forces).")
 
-    output_metadata_file: str = Field(
+    output_metadata_file: str | None = Field(
         default="metadata.csv",
         description=
         "Output CSV file to dump metadata (e.g., SMILES, unique_id, num_atoms, timings).\n"
@@ -384,6 +384,9 @@ def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
                 return_combustion_heat=True,
             ) for st in valid_opt_sts
         ]
+    else:
+        # Skip property calculation if method is None
+        out_sts = valid_opt_sts
 
     time_cost = time.perf_counter() - t_start
     avg_cost_time = time_cost / len(out_sts)
