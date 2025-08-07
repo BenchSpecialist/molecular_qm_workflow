@@ -117,7 +117,6 @@ def _check_docker_ps(node: str, timeout: float = 1.0) -> tuple[str, bool]:
         return node, result.returncode == 0 and IMAGE_NAME in result.stdout
     except subprocess.TimeoutExpired:
         msg = f"Timeout when checking docker processes on {node}"
-        logger.warning(msg)
         print(msg)
         return node, False
 

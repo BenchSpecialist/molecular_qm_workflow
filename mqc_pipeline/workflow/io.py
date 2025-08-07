@@ -18,52 +18,51 @@ def read_smiles(input_file: str) -> list[str]:
     :return: List of SMILES strings.
     """
     input_file = Path(input_file)
-    if input_file.suffix == '.csv':
-        df = polars.read_csv(input_file, comment_prefix='#')
+    if input_file.suffix in ['.csv', '.parquet', '.parq']:
+        # Get DataFrame from CSV or Parquet file
+        if input_file.suffix == '.csv':
+            df = polars.read_csv(input_file, comment_prefix='#')
+        else:
+            import pyarrow.parquet as pq
+            table = pq.read_table(input_file)
+            df = polars.from_arrow(table)
+        # Check for SMILES column
         if not (smiles_col_name := next(
             (col for col in SMILES_COL_NAMES if col in df.columns), None)):
             raise ValueError(
-                f"No SMILES column found in CSV file. Allowed colunm names: {', '.join(SMILES_COL_NAMES)}."
+                f"No SMILES column found in '{input_file}'. Allowed colunm names: {', '.join(SMILES_COL_NAMES)}."
             )
-        logger.info(f"Reading SMILES strings from column '{smiles_col_name}'.")
         # filter out None, empty strings.
         df = df.filter((polars.col(smiles_col_name).is_not_null())
                        & (polars.col(smiles_col_name) != ''))
+        logger.info(
+            f"Reading {df.height} SMILES strings from column '{smiles_col_name}'."
+        )
         return df[smiles_col_name].to_list()
     elif input_file.suffix == '.txt':
         smiles_list = [
             line.strip() for line in input_file.read_text().splitlines()
             if line.strip() and not line.startswith('#')
         ]
+        logger.info(
+            f"Reading {len(smiles_list)} SMILES strings from {input_file}.")
+        return smiles_list
     elif input_file.suffix == '.pkl':
         import pickle
         with open(input_file, 'rb') as f:
             smiles_list = pickle.load(f)
+            logger.info(
+                f"Reading {len(smiles_list)} SMILES strings from {input_file}."
+            )
         if not isinstance(smiles_list, list) or not all(
                 isinstance(smiles, str) for smiles in smiles_list):
             raise ValueError(
                 "Pickle file must contain a list of SMILES strings.")
-    elif input_file.suffix in ['.parquet', '.parq']:
-        import pyarrow.parquet as pq
-
-        table = pq.read_table(input_file)
-        df = polars.from_arrow(table)
-
-        if not (smiles_col_name := next(
-            (col for col in SMILES_COL_NAMES if col in df.columns), None)):
-            raise ValueError(
-                f"No SMILES column found in Parquet file. Allowed column names: {', '.join(SMILES_COL_NAMES)}."
-            )
-        logger.info(f"Reading SMILES strings from column '{smiles_col_name}'.")
-        # filter out None, empty strings.
-        df = df.filter((polars.col(smiles_col_name).is_not_null())
-                       & (polars.col(smiles_col_name) != ''))
-        smiles_list = df[smiles_col_name].to_list()
+        return smiles_list
     else:
         raise ValueError(
             f"Unsupported file format: {input_file.suffix}. Only .csv, .txt, .pkl, and .parquet files are supported."
         )
-    return smiles_list
 
 
 def read_xyz_dir(input_dir: str) -> Generator[Structure, None, None]:

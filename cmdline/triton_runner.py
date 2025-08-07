@@ -1,6 +1,7 @@
 #!/mnt/filesystem/dev_renkeh/mqc-env/bin/python
 """
-Commandline API to run Triton-ML and Triton-DFT pipeline.
+Cmdline utility to run molecular geometry optimization via Triton inference server,
+and subsequent property calculations using extended AIMNET2 model or DFT.
 
 Configure environment variables to allow this script to be executed from any location.
 ```
@@ -86,10 +87,7 @@ def _parse_args():
     """
     Define command-line interface
     """
-    parser = argparse.ArgumentParser(
-        description=
-        "Cmdline utility to run molecular geometry optimization via Triton inference server."
-    )
+    parser = argparse.ArgumentParser(usage=__doc__)
     group = parser.add_mutually_exclusive_group(required=False)
     group.add_argument(
         "--request-num-server-nodes",
@@ -215,6 +213,7 @@ def main():
 
         active_nodes = triton_server_util.get_active_server_nodes()
         active_node_file.write_text("\n".join(active_nodes))
+        print(f"Number of nodes host Triton servers: {len(active_nodes)}")
         print(f"Active Triton server nodes: {active_nodes}")
         print(f"Wrote {active_node_file}.")
         return
