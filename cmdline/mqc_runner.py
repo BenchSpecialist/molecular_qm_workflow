@@ -274,29 +274,21 @@ def main():
                                    outfile,
                                    mol_out_format=out_format)
 
-            # Combine "FAILED_INPUTS.txt" files if exist
-            failed_inputs_files = [
-                batch_dir / "FAILED_INPUTS.txt" for batch_dir in batch_dirs
-                if (batch_dir / "FAILED_INPUTS.txt").exists()
+            # Combine "FAILED_INPUTS.txt" files
+            num_failed_input_files = sum(1 for batch_dir in batch_dirs
+                                         if (batch_dir /
+                                             "FAILED_INPUTS.txt").exists())
+            cmd = [
+                'find', '.', '-type', 'f', '-name', 'FAILED_INPUTS.txt',
+                '-exec', 'cat', '{}', ';'
             ]
-            if failed_inputs_files:
-                combined_failed_inputs = output_dir / "FAILED_INPUTS.txt"
-                with open(combined_failed_inputs, 'w') as outfile:
-                    # Handle first file separately to avoid leading newline
-                    if failed_inputs_files:
-                        with open(failed_inputs_files[0], 'r') as infile:
-                            outfile.write(infile.read())
-
-                    # Add remaining files with efficient buffered reads
-                    for failed_file in failed_inputs_files[1:]:
-                        with open(failed_file, 'r') as infile:
-                            outfile.write('\n')
-                            # Read in chunks of 1MB for better performance
-                            while chunk := infile.read(1024 * 1024):
-                                outfile.write(chunk)
-
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if len(result.stdout) > 0:
+                combined_txt = output_dir / 'all_failed_inputs.txt'
+                with open(combined_txt, 'w') as f:
+                    f.write(result.stdout)
                 print(
-                    f"Combined {len(failed_inputs_files)} FAILED_INPUTS.txt into {combined_failed_inputs}"
+                    f"Combined {num_failed_input_files} FAILED_INPUTS.txt into {combined_txt}"
                 )
 
         if args.cleanup:
