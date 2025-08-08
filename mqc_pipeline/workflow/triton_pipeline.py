@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from rdkit import Chem
 
-from ..smiles_util import smiles_to_structure_batch, get_canonical_smiles_ob
+from ..smiles_util import smiles_to_structure_batch
 from ..batch_optimize import FAILED_INPUTS_FILE, optimize_sts_by_triton
 from .._aimnet import property_inference
 from ..property import combustion_heat
@@ -288,12 +288,34 @@ def add_vdw_volume_batch(sts: list, num_workers: int = TOTAL_CPUS_PER_NODE):
         f"{len(results)} structures")
 
 
-def _get_canonical_smiles_for_st(st) -> str | None:
-    ob_smiles = get_canonical_smiles_ob(st.to_xyz_block())
+def _sanitize_relaxed_xyz(st) -> str | None:
+    import numpy as np
+    from openbabel import pybel
+
+    obmol = pybel.readstring("xyz", st.to_xyz_block())
+    ob_smiles = obmol.write("can").strip().split('\t')[0]
+
     rdkit_mol = Chem.MolFromSmiles(ob_smiles)
     if rdkit_mol is None:
         _log_failed_inputs(
-            f"{st.smiles}: relaxed XYZs-converted SMILES '{ob_smiles}' failed the sanitization."
+            f"{st.smiles}: relaxed XYZs-converted SMILES '{ob_smiles}' "
+            "failed RDKit sanitization (Chem.MolFromSmiles returns None).")
+        return None
+
+    # Check if all bond lengths in the relaxed XYZs are within a reasonable range
+    bond_distances = [
+        np.linalg.norm(
+            np.array(obmol.atoms[bond.GetBeginAtomIdx() - 1].coords) -
+            np.array(obmol.atoms[bond.GetEndAtomIdx() - 1].coords))
+        for bond in pybel.ob.OBMolBondIter(obmol.OBMol)
+    ]
+    unphysical_bond_lengths = [
+        float(distance) for distance in bond_distances
+        if distance < 0.5 or distance > 3.5
+    ]
+    if len(unphysical_bond_lengths) > 0:
+        _log_failed_inputs(
+            f"{st.smiles}: Unphysical bond distances in the OpenBabel geometry:{unphysical_bond_lengths}"
         )
         return None
 
@@ -310,7 +332,7 @@ def gen_can_smiles_and_sanitize_xyz(sts: list,
     t_start = time.perf_counter()
 
     with multiprocessing.Pool(processes=num_workers) as pool:
-        results = pool.map(_get_canonical_smiles_for_st, sts)
+        results = pool.map(_sanitize_relaxed_xyz, sts)
 
     # Add canonical SMILES values to each structure
     for st, can_smiles in zip(sts, results):

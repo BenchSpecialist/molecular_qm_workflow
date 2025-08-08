@@ -40,14 +40,15 @@ def smiles_to_structure(smiles: str,
                          'Supported methods: "rdkit", "openbabel".')
 
     if method == "rdkit":
-        return smiles_to_structure_rdk(smiles,
-                                       max_attempts=kwargs.get(
-                                           "max_attempts",
-                                           _RDKIT_MAX_ATTEMPTS))
+        return smiles_to_structure_rdk(
+            smiles,
+            max_attempts=kwargs.get("max_attempts", _RDKIT_MAX_ATTEMPTS),
+            check_bond_length=kwargs.get("check_bond_length", True))
     if method == "openbabel":
-        return smiles_to_structure_pybel(smiles,
-                                         forcefield=kwargs.get(
-                                             "forcefield", _PYBEL_FORCEFILED))
+        return smiles_to_structure_pybel(
+            smiles,
+            forcefield=kwargs.get("forcefield", _PYBEL_FORCEFILED),
+            check_bond_length=kwargs.get("check_bond_length", True))
 
 
 def one_smiles_to_st(smiles: str) -> Structure:
@@ -57,16 +58,16 @@ def one_smiles_to_st(smiles: str) -> Structure:
     and the error message to the file..
     """
     try:
-        st = smiles_to_structure_rdk(smiles)
+        st = smiles_to_structure_rdk(smiles, check_bond_length=False)
         return st
-    except Exception as rdk_e:
+    except Exception:
         pass
     try:
-        st = smiles_to_structure_pybel(smiles)
+        st = smiles_to_structure_pybel(smiles, check_bond_length=False)
         return st
     except Exception as e:
         with open("FAILED_INPUTS.txt", 'a') as fp:
-            fp.write(f'{smiles}: pybel - {str(e)}\n')
+            fp.write(f'{smiles}: {str(e)}\n')
         return None  # Explicitly return None when both methods fail
 
 
@@ -108,7 +109,8 @@ def _import_pybel():
 
 
 def smiles_to_structure_pybel(smiles: str,
-                              forcefield=_PYBEL_FORCEFILED) -> Structure:
+                              forcefield=_PYBEL_FORCEFILED,
+                              check_bond_length: bool = True) -> Structure:
     """
     Convert a SMILES string to a 3D structure using OpenBabel.
 
@@ -137,23 +139,24 @@ def smiles_to_structure_pybel(smiles: str,
     # Improve the coordinates further
     mol.localopt(forcefield=forcefield, steps=500)
 
-    # Check if the OpenBabel-generated geometry is physical:
-    # bond distances should be in a resonable range
-    ob_mol = mol.OBMol
-    bond_distances = [
-        np.linalg.norm(
-            np.array(mol.atoms[bond.GetBeginAtomIdx() - 1].coords) -
-            np.array(mol.atoms[bond.GetEndAtomIdx() - 1].coords))
-        for bond in pybel.ob.OBMolBondIter(ob_mol)
-    ]
-    unphysical_bond_lengths = [
-        float(distance) for distance in bond_distances
-        if distance < BOND_LENGTH_MIN or distance > BOND_LENGTH_MAX
-    ]
-    if len(unphysical_bond_lengths) > 0:
-        bd_err_msg = f"{smiles}: Unphysical bond distances in the OpenBabel geometry:{unphysical_bond_lengths}"
-        logger.error(bd_err_msg)
-        raise RuntimeError(bd_err_msg)
+    if check_bond_length:
+        # Check if the OpenBabel-generated geometry is physical:
+        # bond distances should be in a resonable range
+        ob_mol = mol.OBMol
+        bond_distances = [
+            np.linalg.norm(
+                np.array(mol.atoms[bond.GetBeginAtomIdx() - 1].coords) -
+                np.array(mol.atoms[bond.GetEndAtomIdx() - 1].coords))
+            for bond in pybel.ob.OBMolBondIter(ob_mol)
+        ]
+        unphysical_bond_lengths = [
+            float(distance) for distance in bond_distances
+            if distance < BOND_LENGTH_MIN or distance > BOND_LENGTH_MAX
+        ]
+        if len(unphysical_bond_lengths) > 0:
+            bd_err_msg = f"{smiles}: Unphysical bond distances in the OpenBabel geometry:{unphysical_bond_lengths}"
+            logger.error(bd_err_msg)
+            raise RuntimeError(bd_err_msg)
 
     metadata = {
         "openbabel_time": round(time.perf_counter() - t_start, 4),
@@ -169,8 +172,8 @@ def smiles_to_structure_pybel(smiles: str,
 
 
 def smiles_to_structure_rdk(smiles: str,
-                            max_attempts: int = _RDKIT_MAX_ATTEMPTS
-                            ) -> Structure:
+                            max_attempts: int = _RDKIT_MAX_ATTEMPTS,
+                            check_bond_length: bool = True) -> Structure:
     """
     Convert a SMILES string to a 3D structure using RDKit.
 
@@ -218,19 +221,20 @@ def smiles_to_structure_rdk(smiles: str,
     # Get conformer with 3D coordinates
     conf = mol.GetConformer()
 
-    # Check if the RDKit-generated geometry is physical
-    bond_distances = [
-        GetBondLength(conf, bond.GetBeginAtomIdx(), bond.GetEndAtomIdx())
-        for bond in mol.GetBonds()
-    ]
-    unphysical_bond_lengths = [
-        float(distance) for distance in bond_distances
-        if distance < BOND_LENGTH_MIN or distance > BOND_LENGTH_MAX
-    ]
-    if len(unphysical_bond_lengths) > 0:
-        bd_err_msg = f"{smiles}: Unphysical bond distances in the RDKit conformer:{unphysical_bond_lengths}"
-        logger.error(bd_err_msg)
-        raise RuntimeError(bd_err_msg)
+    if check_bond_length:
+        # Check if the RDKit-generated geometry is physical
+        bond_distances = [
+            GetBondLength(conf, bond.GetBeginAtomIdx(), bond.GetEndAtomIdx())
+            for bond in mol.GetBonds()
+        ]
+        unphysical_bond_lengths = [
+            float(distance) for distance in bond_distances
+            if distance < BOND_LENGTH_MIN or distance > BOND_LENGTH_MAX
+        ]
+        if len(unphysical_bond_lengths) > 0:
+            bd_err_msg = f"{smiles}: Unphysical bond distances in the RDKit conformer:{unphysical_bond_lengths}"
+            logger.error(bd_err_msg)
+            raise RuntimeError(bd_err_msg)
 
     # Extract coordinates
     elements = [atom.GetSymbol() for atom in mol.GetAtoms()]
