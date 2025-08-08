@@ -132,16 +132,6 @@ def _parse_args():
     return parser.parse_args()
 
 
-def _distribute_inputs(num_inputs, num_nodes) -> list[int]:
-    """ Distribute inputs across nodes for batch processing."""
-    base = num_inputs // num_nodes
-    remainder = num_inputs % num_nodes
-    batch_sizes = [
-        base + 1 if i < remainder else base for i in range(num_nodes)
-    ]
-    return batch_sizes
-
-
 def _distribute_inputs_with_max_size(
         num_inputs: int,
         num_nodes: int,
@@ -327,9 +317,17 @@ def main():
                     "triton_runner.py --request-num-server-nodes <num_active_nodes>"
                 )
         else:
-            active_nodes = [
-                node_name.strip() for node_name in
+            # Read from file and keep unique node names
+            nodes_from_file = {
+                node_name.strip()
+                for node_name in
                 active_node_file.read_text().strip().splitlines()
+            }
+
+            # Filter out invalid node names
+            active_nodes = [
+                node for node in nodes_from_file
+                if node.startswith("fs-sn-") and node.split("-")[-1].isdigit()
             ]
 
         from mqc_pipeline.workflow.io import read_smiles

@@ -212,7 +212,7 @@ def _combine_csv_files(batch_dirs: list[Path],
 
     logger.info(f'{combined_df.height} rows in {output_file}.')
     print(
-        f"Combined {len(csv_files)} {filename} files into {output_file}, {combined_df.height} rows"
+        f"Combined {len(csv_files)} {filename} files into {output_file}, {combined_df.height:_} rows"
     )
 
 
