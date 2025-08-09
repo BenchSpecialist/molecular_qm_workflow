@@ -383,7 +383,7 @@ def run_parallel(
     assert len(out_sts) == len(sts), "Not all molecules were processed"
 
     logger.info(
-        f"Property inference: {len(sts)} molecules in {time.perf_counter() - t_start:.2f} seconds"
+        f"Property inference: {time.perf_counter() - t_start:.2f} seconds, {len(sts)} structures"
     )
 
     # Remove .lock file after processing

@@ -229,7 +229,7 @@ def validate_smiles(smiles_list: list[str],
 
     logger.debug(
         f"validate_smiles ({num_workers} workers): {time.perf_counter() - t_start:.2f} seconds, "
-        f"valid SMILES strings {len(valid_smiles)}/{len(smiles_list)}")
+        f"{len(valid_smiles)}/{len(smiles_list)} valid SMILES strings")
     return valid_smiles
 
 
@@ -413,8 +413,10 @@ def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
     time_cost = time.perf_counter() - t_start
     avg_cost_time = time_cost / len(out_sts)
     logger.info(
-        f"Total time: {len(out_sts)} structures in {time_cost:.4f} seconds ({avg_cost_time:.3f} secs per structure)"
+        f"Total time: {time_cost:.2f} seconds to output {len(out_sts)} structures ({avg_cost_time:.2f} seconds per structure)"
     )
+    logger.info(
+        f'Success percentage: {len(out_sts) / len(smiles_list) * 100:.2f}%')
 
     mol_prop_outfile = Path(settings.output_molecule_property_file).resolve()
     atom_prop_outfile = Path(settings.output_atom_property_file).resolve()

@@ -90,7 +90,6 @@ async def optimize_sts_async(
     atoms_objs = [st.to_ase_atoms() for st in sts]
     # TODO: figure out how to set charge, multiplicity to the server via http requests
     params = {'charge': 0, 'mult': 1}
-    t_start = time.perf_counter()
 
     if not batch_size:
         relaxed_atoms_objs = await request_async(atoms_objs,
@@ -121,10 +120,6 @@ async def optimize_sts_async(
             atom for batch in relaxed_batches for atom in batch
         ]
 
-    time_taken = time.perf_counter() - t_start
-    logger.info(
-        f'TritonInference: Relaxed {len(sts)} structures in {time_taken:.2f} seconds.'
-    )
     opt_sts = [Structure.from_ase_atoms(atoms) for atoms in relaxed_atoms_objs]
     return opt_sts
 
@@ -141,7 +136,9 @@ def optimize_sts_by_triton(sts: list[Structure],
     :param timeout: Timeout in seconds for each request to the Triton server
     :return: List of optimized Structure objects with successful convergence
     """
+    t_start = time.perf_counter()
     opt_sts = asyncio.run(optimize_sts_async(sts, batch_size, timeout))
+    opt_time = time.perf_counter() - t_start
 
     if failed_sts := [(index, st) for index, st in enumerate(opt_sts)
                       if st.metadata['triton_converged'] == False]:
@@ -151,12 +148,11 @@ def optimize_sts_by_triton(sts: list[Structure],
                 for _, st in failed_sts
             ]))
 
-        logger.warning(
-            f'TritonInference: {len(failed_sts)} structures failed to converge'
-        )
-
     # Remove un-converged structures from output
     converged_sts = [
         st for st in opt_sts if st.metadata['triton_converged'] == True
     ]
+    logger.info(
+        f'TritonInference: {opt_time:.2f} seconds, {len(converged_sts)}/{len(sts)} structures converged.'
+    )
     return converged_sts
