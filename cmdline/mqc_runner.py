@@ -25,12 +25,11 @@ import pickle
 import argparse
 import warnings
 import subprocess
-import polars
 from pathlib import Path
 
 from mqc_pipeline.settings import PipelineSettings
 from mqc_pipeline.validate import validate_input
-from mqc_pipeline.util import get_default_logger, change_dir, profiler
+from mqc_pipeline.util import get_default_logger, change_dir
 
 logger = get_default_logger()
 
@@ -170,53 +169,6 @@ def _distribute_inputs(num_inputs, num_jobs) -> list[int]:
     return batch_sizes
 
 
-@profiler
-def _combine_csv_files(batch_dirs: list[Path],
-                       filename: str,
-                       mol_out_format='parq') -> None:
-    """
-    Combine CSV files with the same name from all batch directories.
-
-    :param output_dir: List of batch subdirectories
-    :param filename: Name of the CSV file to combine (e.g., "molecule_property.csv")
-    :param mol_out_format: Output format for the combined molecule property table
-                           and metadata table, either 'csv' or 'parq'.
-    """
-    mol_out_format = mol_out_format.lower()
-    csv_files = [
-        batch_dir / filename for batch_dir in batch_dirs
-        if (batch_dir / filename).exists()
-    ]
-    if not csv_files:
-        return
-
-    # Read and combine all CSV files
-    schema_overrides = {'unique_id': polars.datatypes.Utf8}
-    dataframes = [
-        polars.read_csv(csv_file, schema_overrides=schema_overrides)
-        for csv_file in csv_files
-    ]
-    combined_df = polars.concat(dataframes, how='diagonal')
-
-    from mqc_pipeline.util import write_df_to_parq_duckdb
-
-    # Write combined df in the parent directory
-    if "atom_property" in filename or (mol_out_format == 'parq'):
-        # Always save combined atom table in the compact parquet format as it's much larger
-        # than molecule_property and metadata table
-        output_file = batch_dirs[0].parent / Path(filename).with_suffix(
-            '.parquet')
-        write_df_to_parq_duckdb(combined_df, output_file)
-    else:
-        output_file = batch_dirs[0].parent / filename
-        combined_df.write_csv(output_file)
-
-    logger.info(f'{combined_df.height} rows in {output_file}.')
-    print(
-        f"Combined {len(csv_files)} {filename} files into {output_file}, {combined_df.height} rows"
-    )
-
-
 def main():
     """
     Main function to run the pipeline.
@@ -262,6 +214,8 @@ def main():
             return
 
     if out_format := args.combine_results:
+        from mqc_pipeline.workflow.postprocess import combine_csv_files_chunk, combine_csv_files_parallel
+
         output_dir = Path(os.environ.get("MQC_OUTPUT_DIR",
                                          Path.cwd())).resolve()
 
@@ -271,10 +225,23 @@ def main():
         ]
         if batch_dirs:
             for outfile in OUTFILES:
-                _combine_csv_files(batch_dirs,
-                                   outfile,
-                                   mol_out_format=out_format)
-
+                outfile_paths = [
+                    batch_dir / outfile for batch_dir in batch_dirs
+                    if (batch_dir / outfile).exists()
+                ]
+                if outfile_paths:
+                    # multiprocessing version have huge memory overhead,
+                    # e.g. atom_property table with ~66 million rows cannot be processed
+                    if "atom_property" in str(outfile):
+                        combine_csv_files_chunk(outfile_paths,
+                                                mol_out_format=out_format,
+                                                files_per_chunk=60)
+                    else:
+                        # For molecule_property table with ~2 million rows,
+                        # multiprocessing reduces runtime from 70.4 seconds to 6.2 seconds
+                        combine_csv_files_parallel(outfile_paths,
+                                                   mol_out_format=out_format,
+                                                   n_workers=4)
             # Combine "FAILED_INPUTS.txt" files
             num_failed_input_files = sum(1 for batch_dir in batch_dirs
                                          if (batch_dir /
