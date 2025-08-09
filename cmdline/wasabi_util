@@ -25,6 +25,8 @@ import os
 import argparse
 from tqdm import tqdm
 from pathlib import Path
+from tabulate import tabulate
+import polars
 
 import boto3
 from botocore.exceptions import ClientError
@@ -105,9 +107,9 @@ def get_object_keys(bucket_name: str) -> list[str]:
     return [obj['Key'] for obj in objects] if objects else []
 
 
-def upload_file(local_file_path: str,
-                bucket_name: str,
-                object_key: str | None = None) -> None:
+def upload_one_file(local_file_path: str,
+                    bucket_name: str,
+                    object_key: str | None = None) -> None:
     """
     Upload a file to Wasabi S3 bucket.
 
@@ -138,9 +140,9 @@ def upload_file(local_file_path: str,
         print(f"Error: {e}")
 
 
-def download_file(bucket_name: str,
-                  object_key: str,
-                  local_file_path: Path | None = None) -> None:
+def download_one_file(bucket_name: str,
+                      object_key: str,
+                      local_file_path: Path | None = None) -> None:
     """
     Download a file from Wasabi S3 bucket.
 
@@ -175,8 +177,59 @@ def download_file(bucket_name: str,
         print(f"Error: {e}")
 
 
+def validate_and_upload_file(local_file: str,
+                             bucket_name: str,
+                             remote_path: str | None = None) -> None:
+    if not Path(local_file).is_file():
+        raise SystemExit(f"Local file '{local_file}' does not exist.")
+
+    # Don't upload if the specified remote_path already exists
+    existing_object_keys = get_object_keys(bucket_name)
+    if remote_path in existing_object_keys:
+        raise SystemExit(
+            f"Remote path '{remote_path}' already exists in bucket '{bucket_name}'."
+        )
+
+    upload_one_file(local_file, bucket_name, remote_path)
+
+
+def validate_and_download_file(bucket_name: str, remote_path: str) -> None:
+    # Check if the object exists in the bucket
+    available_object_keys = get_object_keys(bucket_name)
+    if remote_path not in available_object_keys:
+        raise SystemExit(
+            f"'{remote_path}' does not exist in bucket '{bucket_name}'.")
+
+    local_file_path = Path.cwd() / Path(remote_path).name
+    if local_file_path.exists():
+        local_file_path = Path.cwd() / "new" + Path(remote_path).name
+
+    download_one_file(bucket_name, remote_path, local_file_path)
+
+
+def read_from_csv(file_path: str, mode: str) -> list[tuple]:
+    mode_to_num_cols = {
+        'upload':
+        (3, '--upload-from-csv', 'BUCKET_NAME, LOCAL_FILE_PATH, REMOTE_PATH'),
+        'download': (2, '--download-from-csv', 'BUCKET_NAME, REMOTE_PATH')
+    }
+    num_required_cols, flag, col_spec = mode_to_num_cols[mode]
+
+    df = polars.read_csv(file_path, has_header=False)
+    if df.width != num_required_cols:
+        raise SystemExit(
+            f"'{flag}' needs a CSV file with {num_required_cols} columns ({col_spec}), got {df.width} columns."
+        )
+
+    rows: list[tuple] = []
+    for row in df.iter_rows():
+        rows.append([s.strip() for s in row])
+    return rows
+
+
 def main():
     parser = argparse.ArgumentParser(usage=__doc__)
+
     parser.add_argument('--ls-buckets',
                         action='store_true',
                         help="List all buckets")
@@ -186,17 +239,35 @@ def main():
                         metavar='BUCKET',
                         help="List objects in a bucket")
 
-    parser.add_argument(
+    group = parser.add_mutually_exclusive_group(required=False)
+    group.add_argument(
         '--upload',
         nargs=3,
         metavar=('LOCAL_FILE', 'BUCKET', 'REMOTE_PATH'),
         help=
         "Upload a local file to a specified bucket with the given remote path")
 
-    parser.add_argument('--download',
-                        nargs=2,
-                        metavar=('BUCKET', 'REMOTE_PATH'),
-                        help="Download a file from a specified bucket")
+    group.add_argument('--download',
+                       nargs=2,
+                       metavar=('BUCKET', 'REMOTE_PATH'),
+                       help="Download a file from a specified bucket")
+
+    group.add_argument(
+        '--upload-from-csv',
+        type=str,
+        metavar='CSV_FILE',
+        help=
+        "Upload files listed in a CSV file (no header). Each row should contain "
+        "BUCKET_NAME, LOCAL_FILE_PATH, REMOTE_PATH in order, separated either by comma."
+    )
+
+    group.add_argument(
+        '--download-from-csv',
+        type=str,
+        metavar='CSV_FILE',
+        help=
+        "Download files listed in a CSV file (no header). Each row should contain "
+        "BUCKET_NAME, REMOTE_PATH in order, separated either by comma.")
 
     args = parser.parse_args()
 
@@ -219,22 +290,65 @@ def main():
         return
 
     if args.upload:
-        local_file, bucket_name, object_key = args.upload
+        local_file, bucket_name, remote_path = args.upload
+        # Validate bucket existence
         _validate_bucket(bucket_name)
-        upload_file(local_file, bucket_name, object_key)
+        # Validate and upload file
+        validate_and_upload_file(local_file, bucket_name, remote_path)
         return
 
     if args.download:
-        bucket_name, object_key = args.download
+        bucket_name, remote_path = args.download
         # Validate bucket existence
         _validate_bucket(bucket_name)
-        # Check if the object exists in the bucket
-        available_object_keys = get_object_keys(bucket_name)
-        if object_key not in available_object_keys:
-            raise SystemExit(
-                f"Object '{object_key}' does not exist in bucket '{bucket_name}'."
-            )
-        download_file(bucket_name, object_key)
+        # Validate and download file
+        validate_and_download_file(bucket_name, remote_path)
+        return
+
+    error_summary = []
+    num_finished = 0
+    if csv_file := args.upload_from_csv:
+        if not Path(csv_file).exists():
+            raise SystemExit(f"'{csv_file}' does not exist.")
+        rows = read_from_csv(csv_file, mode='upload')
+        for row in rows:
+            bucket_name, local_file, remote_path = row
+            try:
+                _validate_bucket(bucket_name)
+                validate_and_upload_file(local_file, bucket_name, remote_path)
+                num_finished += 1
+            except SystemExit as e:
+                error_summary.append([Path(local_file).resolve(), str(e)])
+
+        print('\n=== Summary ===')
+        print(f"{num_finished}/{len(rows)} uploaded")
+        if error_summary:
+            print(
+                tabulate(error_summary,
+                         headers=["Local Path", "Failure Reason"],
+                         tablefmt="simple"))
+        return
+
+    if csv_file := args.download_from_csv:
+        if not Path(csv_file).exists():
+            raise SystemExit(f"'{csv_file}' does not exist.")
+        rows = read_from_csv(csv_file, mode='download')
+        for row in rows:
+            bucket_name, remote_path = row
+            try:
+                _validate_bucket(bucket_name)
+                validate_and_download_file(bucket_name, remote_path)
+                num_finished += 1
+            except SystemExit as e:
+                error_summary.append([bucket_name, remote_path, str(e)])
+
+        print('\n=== Summary ===')
+        print(f"{num_finished}/{len(rows)} downloaded")
+        if error_summary:
+            print(
+                tabulate(error_summary,
+                         headers=["Bucket", "Remote Path", "Failure Reason"],
+                         tablefmt="simple"))
         return
 
 
