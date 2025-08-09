@@ -20,6 +20,18 @@ Usage:
 
 - Download a file from a bucket:
     $ wasabi_util --download <bucket_name> <remote_path>
+
+- Upload files from a CSV file:
+    $ wasabi_util --upload-from-csv <csv_file>
+    Each row should contain BUCKET_NAME, LOCAL_FILE_PATH, REMOTE_PATH in order.
+    Example row:
+    materials-development, input.parq, remote_input.parquet
+
+- Download files from a CSV file:
+    $ wasabi_util --download-from-csv <csv_file>
+    Each row should contain BUCKET_NAME, REMOTE_PATH in order.
+    Example row:
+    snowflake-staging, MUPT1/part_0.parquet
 """
 import os
 import argparse
@@ -258,7 +270,7 @@ def main():
         metavar='CSV_FILE',
         help=
         "Upload files listed in a CSV file (no header). Each row should contain "
-        "BUCKET_NAME, LOCAL_FILE_PATH, REMOTE_PATH in order, separated either by comma."
+        "BUCKET_NAME, LOCAL_FILE_PATH, REMOTE_PATH in order, separated by comma."
     )
 
     group.add_argument(
@@ -267,7 +279,7 @@ def main():
         metavar='CSV_FILE',
         help=
         "Download files listed in a CSV file (no header). Each row should contain "
-        "BUCKET_NAME, REMOTE_PATH in order, separated either by comma.")
+        "BUCKET_NAME, REMOTE_PATH in order, separated by comma.")
 
     args = parser.parse_args()
 
