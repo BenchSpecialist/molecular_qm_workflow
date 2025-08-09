@@ -137,7 +137,7 @@ def upload_one_file(local_file_path: str,
         with tqdm(total=file_size,
                   unit='B',
                   unit_scale=True,
-                  desc=f"Uploading {Path(local_file_path).name}") as pbar:
+                  desc=f"Uploading {local_file_path}") as pbar:
 
             def callback(bytes_transferred):
                 pbar.update(bytes_transferred)
