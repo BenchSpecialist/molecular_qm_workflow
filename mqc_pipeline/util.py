@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import logging
+import tracemalloc
 from loguru import logger as _loguru_logger
 from functools import wraps
 from contextlib import contextmanager
@@ -84,24 +85,49 @@ def timeit(func: Callable[..., T], *args: Any,
     return result, round(duration, 4)
 
 
-def timer(func):
+def get_human_readable_size(size_bytes) -> str:
     """
-    Decorator to profile execution time of a function.
+    Convert file size to human-readable format.
+
+    :param path: Path to the file
+    :return: Human-readable size string, e.g., "1.23 MB"
+    """
+    units = ['B', 'KB', 'MB', 'GB', 'TB']
+    size = float(size_bytes)
+    unit_index = 0
+
+    while size >= 1024 and unit_index < len(units) - 1:
+        size /= 1024
+        unit_index += 1
+
+    return f"{size:.2f} {units[unit_index]}"
+
+
+def profiler(func):
+    """
+    Decorator to profile a function's execution time and memory usage.
     """
 
     @wraps(func)
     def wrapper(*args, **kwargs):
+        tracemalloc.start()
         start_time = time.perf_counter()
 
         try:
             result = func(*args, **kwargs)
         finally:
+            current_mem, max_bytes = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
+
             end_time = time.perf_counter()
             execution_time = end_time - start_time
 
-            # Print profiling information
+            print(f"  [Profiling] Function: {func.__name__}")
             print(
-                f"\nProfiled `{func.__name__}`: {execution_time:.4f} seconds")
+                f"  [Profiling] Execution Time: {execution_time:.4f} seconds")
+            print(
+                f"  [Profiling] Peak Memory Usage: {get_human_readable_size(max_bytes)}"
+            )
 
         # Return the original function's result
         return result

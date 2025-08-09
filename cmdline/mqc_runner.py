@@ -30,7 +30,7 @@ from pathlib import Path
 
 from mqc_pipeline.settings import PipelineSettings
 from mqc_pipeline.validate import validate_input
-from mqc_pipeline.util import get_default_logger, change_dir
+from mqc_pipeline.util import get_default_logger, change_dir, profiler
 
 logger = get_default_logger()
 
@@ -170,6 +170,7 @@ def _distribute_inputs(num_inputs, num_jobs) -> list[int]:
     return batch_sizes
 
 
+@profiler
 def _combine_csv_files(batch_dirs: list[Path],
                        filename: str,
                        mol_out_format='parq') -> None:
@@ -212,7 +213,7 @@ def _combine_csv_files(batch_dirs: list[Path],
 
     logger.info(f'{combined_df.height} rows in {output_file}.')
     print(
-        f"Combined {len(csv_files)} {filename} files into {output_file}, {combined_df.height:_} rows"
+        f"Combined {len(csv_files)} {filename} files into {output_file}, {combined_df.height} rows"
     )
 
 

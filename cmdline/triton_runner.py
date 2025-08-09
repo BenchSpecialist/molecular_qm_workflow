@@ -329,6 +329,7 @@ def main():
                 node for node in nodes_from_file
                 if node.startswith("fs-sn-") and node.split("-")[-1].isdigit()
             ]
+            logger.info(f"{len(active_nodes)} active Triton server nodes.")
 
         from mqc_pipeline.workflow.io import read_smiles
 
