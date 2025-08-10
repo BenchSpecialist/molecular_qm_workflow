@@ -146,7 +146,7 @@ def optimize_sts_by_triton(sts: list[Structure],
             f.write("\n".join([
                 f"{st.smiles}: batch optimization failed to converge."
                 for _, st in failed_sts
-            ]))
+            ]) + '\n')
 
     # Remove un-converged structures from output
     converged_sts = [

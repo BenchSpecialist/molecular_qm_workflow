@@ -53,22 +53,22 @@ def smiles_to_structure(smiles: str,
 
 def one_smiles_to_st(smiles: str) -> Structure:
     """
-    Convert a single SMILES string to a 3D structure with fallback: try RDKit first,
-    then OpenBabel with forcefield if RDKit fails, if both fail, log the SMILES string
-    and the error message to the file..
+    Convert a single SMILES string to a 3D structure.
     """
     try:
         st = smiles_to_structure_rdk(smiles, check_bond_length=False)
         return st
-    except Exception:
-        pass
-    try:
-        st = smiles_to_structure_pybel(smiles, check_bond_length=False)
-        return st
     except Exception as e:
         with open("FAILED_INPUTS.txt", 'a') as fp:
-            fp.write(f'{smiles}: {str(e)}\n')
-        return None  # Explicitly return None when both methods fail
+            fp.write(f'{smiles}: smiles_to_st failed - {str(e)}\n')
+        return None
+    # try:
+    #     st = smiles_to_structure_pybel(smiles, check_bond_length=False)
+    #     return st
+    # except Exception as e:
+    #     with open("FAILED_INPUTS.txt", 'a') as fp:
+    #         fp.write(f'{smiles}: {str(e)}\n')
+    #     return None
 
 
 def smiles_to_structure_batch(smiles_list: list[str],
@@ -137,7 +137,7 @@ def smiles_to_structure_pybel(smiles: str,
     mol.make3D(forcefield=_PYBEL_FORCEFILED, steps=50)
 
     # Improve the coordinates further
-    mol.localopt(forcefield=forcefield, steps=500)
+    # mol.localopt(forcefield=forcefield, steps=500)
 
     if check_bond_length:
         # Check if the OpenBabel-generated geometry is physical:
