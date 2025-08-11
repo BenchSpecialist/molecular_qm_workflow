@@ -228,6 +228,8 @@ def read_from_csv(file_path: str, mode: str) -> list[tuple]:
     num_required_cols, flag, col_spec = mode_to_num_cols[mode]
 
     df = polars.read_csv(file_path, has_header=False)
+    # Filter out empty rows
+    df = df.filter(polars.any_horizontal(polars.all().is_not_null()))
     if df.width != num_required_cols:
         raise SystemExit(
             f"'{flag}' needs a CSV file with {num_required_cols} columns ({col_spec}), got {df.width} columns."
