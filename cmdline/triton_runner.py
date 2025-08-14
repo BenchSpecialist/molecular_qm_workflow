@@ -355,14 +355,13 @@ def main():
             for _ in range(num_jobs):
                 node_name = active_nodes[node_idx]
                 batch_smiles = smiles_list[start_idx:start_idx + batch_size]
+                job_dir_name = f"batch_{start_idx}-{start_idx + batch_size-1}"
                 start_idx += batch_size
 
                 # Create a unique directory for each job on this node
                 # job_idx = node_job_counts[node_name]
                 # job_dir_name = f"{node_name}_{job_idx}"
                 node_job_counts[node_name] += 1
-
-                job_dir_name = f"batch_{start_idx}-{start_idx + batch_size-1}"
                 batch_dir = output_dir / job_dir_name
 
                 batch_dir.mkdir(parents=True, exist_ok=True)
