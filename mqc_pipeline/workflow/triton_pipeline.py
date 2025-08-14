@@ -1,14 +1,19 @@
 import os
 import time
 import yaml
+import pickle
 import multiprocessing
 from enum import Enum
 from pathlib import Path
 from functools import partial
+from dataclasses import dataclass
 from pydantic import BaseModel, Field, field_validator
 
+import numpy as np
 from rdkit import Chem
+from openbabel import pybel
 
+from ..common import Structure
 from ..smiles_util import smiles_to_structure_batch
 from ..batch_optimize import FAILED_INPUTS_FILE, optimize_sts_by_triton
 from .._aimnet import property_inference
@@ -288,19 +293,24 @@ def add_vdw_volume_batch(sts: list, num_workers: int = TOTAL_CPUS_PER_NODE):
         f"{len(results)} structures")
 
 
-def _sanitize_relaxed_xyz(st) -> str | None:
-    import numpy as np
-    from openbabel import pybel
+@dataclass(slots=True)
+class SanitizeXYZOutput:
+    is_valid: bool
+    out_st: Structure | None = None
+    error_message: str | None = None
 
+
+def sanitize_relaxed_xyz(st) -> SanitizeXYZOutput:
     obmol = pybel.readstring("xyz", st.to_xyz_block())
     ob_smiles = obmol.write("can").strip().split('\t')[0]
 
     rdkit_mol = Chem.MolFromSmiles(ob_smiles)
     if rdkit_mol is None:
-        _log_failed_inputs(
-            f"{st.smiles}: relaxed XYZs-converted SMILES '{ob_smiles}' "
+        return SanitizeXYZOutput(
+            is_valid=False,
+            out_st=None,
+            error_message=f"Relaxed XYZs-converted SMILES '{ob_smiles}' "
             "failed RDKit sanitization (Chem.MolFromSmiles returns None).")
-        return None
 
     # Check if all bond lengths in the relaxed XYZs are within a reasonable range
     bond_distances = [
@@ -314,40 +324,78 @@ def _sanitize_relaxed_xyz(st) -> str | None:
         if distance < 0.5 or distance > 3.5
     ]
     if len(unphysical_bond_lengths) > 0:
-        _log_failed_inputs(
-            f"{st.smiles}: Unphysical bond distances in the OpenBabel geometry:{unphysical_bond_lengths}"
+        return SanitizeXYZOutput(
+            is_valid=False,
+            out_st=None,
+            error_message=
+            f"Unphysical bond distances in the OpenBabel geometry - {unphysical_bond_lengths}"
         )
-        return None
 
-    return Chem.MolToSmiles(rdkit_mol, isomericSmiles=False, canonical=True)
+    canonical_smiles = Chem.MolToSmiles(rdkit_mol,
+                                        isomericSmiles=False,
+                                        canonical=True)
+    # Check if the molecule has multiple fragments
+    if canonical_smiles.count(".") > 0:
+        return SanitizeXYZOutput(
+            is_valid=False,
+            out_st=None,
+            error_message=f"Disconnected fragments (. in SMILES).")
+
+    st.property['canonical_smiles'] = canonical_smiles
+
+    # Check if the molecule contains radical atoms
+    if radical_electrons := {
+        (atom.GetIdx(), atom.GetSymbol()): atom.GetNumRadicalElectrons()
+            for atom in rdkit_mol.GetAtoms()
+            if atom.GetNumRadicalElectrons() > 0
+    }:
+        st.property['num_radical_electrons'] = sum(radical_electrons.values())
+        return SanitizeXYZOutput(
+            is_valid=False,
+            out_st=st,  # still save the structure but add error message
+            error_message=f'Radical electrons found - {radical_electrons}')
+
+    return SanitizeXYZOutput(is_valid=True, out_st=st, error_message=None)
 
 
-def gen_can_smiles_and_sanitize_xyz(sts: list,
-                                    num_workers: int = TOTAL_CPUS_PER_NODE
-                                    ) -> list:
+def sanitize_xyz_parallel(sts: list,
+                          num_workers: int = TOTAL_CPUS_PER_NODE) -> list:
     """
-    Generate canonical SMILES strings from a batch of structures in parallel;
-    relaxed structures that failed to pass sanitization will be filtered out.
+    Sanitize coordinates and generate canonical SMILES strings from a batch of structures
+    in parallel; relaxed structures that failed to pass sanitization will be filtered out.
     """
     t_start = time.perf_counter()
 
     with multiprocessing.Pool(processes=num_workers) as pool:
-        results = pool.map(_sanitize_relaxed_xyz, sts)
+        results = pool.map(sanitize_relaxed_xyz, sts)
 
-    # Add canonical SMILES values to each structure
-    for st, can_smiles in zip(sts, results):
-        st.property['canonical_smiles'] = can_smiles
+    # Get output structures
+    out_sts = [result.out_st for result in results if result.is_valid]
 
-    # Filter out structures with None canonical_smiles
-    valid_sts = [
-        st for st in sts if st.property.get('canonical_smiles') is not None
+    # Collect structures with radical electrons and dump them to a file
+    radical_sts = [
+        result.out_st for result in results
+        if 'Radical electrons' in result.error_message
     ]
+    radical_st_outfile = f'radical_{len(radical_sts)}_sts.pkl'
+    with open(radical_st_outfile, 'wb') as f:
+        pickle.dump(radical_sts, f)
+    logger.info(
+        f"sanitize_xyz_parallel: {len(radical_sts)} molecules with radical electrons, saved to '{radical_st_outfile}'."
+    )
+
+    # Collect and log all error messages
+    error_messages = [
+        f"{st.smiles}: {result.error_message}"
+        for st, result in zip(sts, results) if not result.is_valid
+    ]
+    _log_failed_inputs('\n'.join(error_messages))
 
     logger.info(
-        f"gen_can_smiles_and_sanitize_xyz ({num_workers} workers): {time.perf_counter() - t_start:.2f} seconds, "
-        f"{len(valid_sts)}/{len(sts)} valid structures")
+        f"sanitize_xyz_parallel ({num_workers} workers): {time.perf_counter() - t_start:.2f} seconds, "
+        f"{len(out_sts)}/{len(sts)} outputs")
 
-    return valid_sts
+    return out_sts
 
 
 def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
@@ -372,8 +420,7 @@ def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
 
     # Generate canonical SMILES strings from optimized coordinates
     # Relaxed XYZs that fail the sanitization are discarded.
-    valid_opt_sts = gen_can_smiles_and_sanitize_xyz(opt_sts,
-                                                    num_workers=num_cpus)
+    valid_opt_sts = sanitize_xyz_parallel(opt_sts, num_workers=num_cpus)
 
     # Get properties for optimized structures (ML inference or DFT)
     if settings.property_method == METHOD_AIMNet2:
