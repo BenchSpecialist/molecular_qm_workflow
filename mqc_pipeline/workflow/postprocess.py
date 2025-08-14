@@ -29,8 +29,10 @@ def combine_csv_files_chunk(outfile_paths: list[Path],
         return
 
     # Chunked processing for memory efficiency
-    print("Using chunked processing for combining CSV files.")
+    print("\nUsing chunked processing for combining CSV files.")
     combined_df = _combine_with_chunking(csv_files, chunk_size=files_per_chunk)
+    print(f"Columns: {combined_df.columns} ")
+    print(combined_df.head(5))  # Display the first 10 rows
 
     # Write output
     from mqc_pipeline.util import write_df_to_parq_duckdb
@@ -87,10 +89,33 @@ def _process_chunk(chunk_files):
     :param chunk_files: List of CSV file paths to process
     :return: Combined DataFrame from all files in the chunk
     """
-    chunk_dfs = [
-        polars.read_csv(csv_file, schema_overrides=SCHEMA_OVERRIDES)
-        for csv_file in chunk_files
-    ]
+    chunk_dfs = []
+    float_cols = 'triton_energy_ev homo lumo esp_min esp_max combustion_heat_ev vdw_volume_angstrom3'
+
+    for csv_file in chunk_files:
+        df = polars.read_csv(csv_file, schema_overrides=SCHEMA_OVERRIDES)
+        # Try to cast string columns to float if they contain numeric data
+        for col in df.columns:
+            if df[col].dtype == polars.Utf8:
+                try:
+                    # Check first 10 non-null values to see if they're numeric
+                    sample_values = df.select(
+                        polars.col(col).drop_nulls().head(
+                            10)).to_series().to_list()
+                    is_numeric = all(
+                        val.replace('.', '').replace('-', '').replace(
+                            '+', '').isdigit() for val in sample_values
+                        if val and isinstance(val, str))
+
+                    if is_numeric and sample_values:
+                        df = df.with_columns(
+                            polars.col(col).str.strip_chars().cast(
+                                polars.Float64, strict=False))
+                except:
+                    pass  # Keep as string if casting fails
+
+        chunk_dfs.append(df)
+
     return polars.concat(chunk_dfs, how='diagonal')
 
 
@@ -136,6 +161,8 @@ def combine_csv_files_parallel(outfile_paths: list[Path],
 
     # Combine all chunks
     combined_df = polars.concat(chunk_results, how='diagonal')
+    print(f"Columns: {combined_df.columns} ")
+    print(combined_df.head(5))  # Display the first 10 rows
 
     # Write output
     from mqc_pipeline.util import write_df_to_parq_duckdb
