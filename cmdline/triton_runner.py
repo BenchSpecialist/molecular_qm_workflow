@@ -145,49 +145,44 @@ def _distribute_inputs_with_max_size(
 
     :return: List of (batch_size, num_jobs_for_this_size) tuples
     """
-    # Calculate total number of jobs needed
     total_jobs = (num_inputs + max_size - 1) // max_size
+    base_jobs_per_node = total_jobs // num_nodes
+    nodes_with_extra = total_jobs % num_nodes
 
-    # Calculate jobs per node (can be fractional at this point)
-    jobs_per_node = total_jobs / num_nodes
-
-    # Round down for most nodes
-    base_jobs_per_node = int(jobs_per_node)
-
-    # Some nodes get one extra job to handle remainder
-    nodes_with_extra = round((jobs_per_node - base_jobs_per_node) * num_nodes)
-
-    # Calculate how many inputs will be in a full job
-    full_job_size = max_size
-
-    # Calculate how many inputs will be in the last job (might not be full)
-    remaining_inputs = num_inputs % max_size if num_inputs % max_size != 0 else max_size
-
-    # Prepare the distribution
     distribution = []
 
-    # Add nodes with base number of jobs
+    # Nodes with base number of jobs
     if base_jobs_per_node > 0:
-        # Most nodes get this many full-sized jobs
         distribution.append(
-            (full_job_size,
-             base_jobs_per_node * (num_nodes - nodes_with_extra)))
+            (max_size, base_jobs_per_node * (num_nodes - nodes_with_extra)))
 
-    # Add nodes with base+1 number of jobs
+    # Nodes with one extra job
     if nodes_with_extra > 0:
         distribution.append(
-            (full_job_size, base_jobs_per_node * nodes_with_extra))
+            (max_size, (base_jobs_per_node + 1) * nodes_with_extra))
 
-    # Add the final partial job if needed
-    if remaining_inputs < max_size and total_jobs > 0:
-        # Replace the last full job with a partial one
-        if distribution and distribution[-1][0] == full_job_size:
-            last_size, last_count = distribution[-1]
-            distribution[-1] = (last_size, last_count - 1)
-            distribution.append((remaining_inputs, 1))
+    # Handle the last partial job
+    remaining = num_inputs % max_size
+    if remaining > 0:
+        # Replace one full job with a partial job
+        if distribution:
+            last_batch_size, last_count = distribution[-1]
+            if last_count > 1:
+                distribution[-1] = (last_batch_size, last_count - 1)
+                distribution.append((remaining, 1))
+            else:
+                distribution[-1] = (remaining, 1)
         else:
-            distribution.append((remaining_inputs, 1))
+            distribution.append((remaining, 1))
 
+    count = sum(batch_size * n for batch_size, n in distribution)
+    if count != num_inputs:
+        raise SystemExit(
+            f"_distribute_inputs_with_max_size: Total input count {count} does not match expected {num_inputs}"
+        )
+    logger.debug(
+        f"Distributed {num_inputs} inputs across {num_nodes} nodes with max size {max_size}: {distribution}"
+    )
     return distribution
 
 
@@ -363,11 +358,13 @@ def main():
                 start_idx += batch_size
 
                 # Create a unique directory for each job on this node
-                job_idx = node_job_counts[node_name]
-                job_dir_name = f"{node_name}_{job_idx}"
+                # job_idx = node_job_counts[node_name]
+                # job_dir_name = f"{node_name}_{job_idx}"
                 node_job_counts[node_name] += 1
 
+                job_dir_name = f"batch_{start_idx}-{start_idx + batch_size-1}"
                 batch_dir = output_dir / job_dir_name
+
                 batch_dir.mkdir(parents=True, exist_ok=True)
 
                 batch_file = batch_dir / "input_smiles.pkl"
@@ -382,16 +379,32 @@ def main():
                         batch_file=str(batch_file))
                 if job_id:
                     submitted_jobs.append(
-                        (job_dir_name, job_id, len(batch_smiles)))
+                        (job_dir_name, node_name, job_id, len(batch_smiles)))
 
                 # Move to next node in round-robin fashion
                 node_idx = (node_idx + 1) % len(active_nodes)
 
-        job_info = tabulate(submitted_jobs,
-                            headers=['Job Directory', 'Job ID', 'Num_SMILES'],
-                            tablefmt="simple",
-                            colalign=("left", "left", "right"))
-        logger.info(f"Submitted {len(submitted_jobs)} jobs:\n{job_info}")
+        ## Print summary of submitted jobs
+        node_job_counts = list(node_job_counts.items())
+        # Sort by nodename
+        node_job_counts.sort(key=lambda x: x[0])
+        node_jobs_info = tabulate(node_job_counts,
+                                  headers=['Node', 'Num_jobs'],
+                                  tablefmt="rounded_outline",
+                                  colalign=("left", "right"))
+        # Sort by nodename
+        submitted_jobs.sort(key=lambda x: x[1])
+        job_info = tabulate(
+            submitted_jobs,
+            headers=['Job Directory', 'Node', 'Job ID', 'Num_SMILES'],
+            tablefmt="simple",
+            colalign=("left", "left", "left", "right"))
+        logger.info(
+            f"Submitted {len(submitted_jobs)} jobs:\n{node_jobs_info}\n{job_info}"
+        )
+        print(
+            f"Total {len(submitted_jobs)} jobs on {len(active_nodes)} nodes:\n{node_jobs_info}"
+        )
 
 
 def _submit_job(output_dir: str, node_name: str, cached_config: str,
