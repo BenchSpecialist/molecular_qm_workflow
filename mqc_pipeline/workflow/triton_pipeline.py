@@ -377,7 +377,8 @@ def sanitize_xyz_parallel(sts: list,
         result.out_st for result in results
         if 'Radical electrons' in result.error_message
     ]
-    radical_st_outfile = f'radical_{len(radical_sts)}_sts.pkl'
+    radical_st_outfile = Path.cwd().parent / Path(
+        f'{Path.cwd().name}_radical_{len(radical_sts)}.pkl')
     with open(radical_st_outfile, 'wb') as f:
         pickle.dump(radical_sts, f)
     logger.info(
@@ -414,6 +415,11 @@ def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
 
     # Convert SMILES strings to 3D structures in parallel
     init_sts = smiles_to_structure_batch(smiles_list, num_workers=num_cpus)
+    # Dump initial structures to a pickle file, as this is the most expensive step
+    # saving initial structures helps reduce the time cost of re-running the pipeline
+    init_sts_pkl = Path(f'init_{len(init_sts)}_sts.pkl')
+    with open(init_sts_pkl, 'wb') as f:
+        pickle.dump(init_sts, f)
 
     # Optimize structures using Triton inference server
     opt_sts = optimize_sts_by_triton(init_sts, batch_size=BATCH_SIZE_PER_GPU)
@@ -470,10 +476,16 @@ def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
     write_molecule_property(out_sts, filename=str(mol_prop_outfile))
     write_atom_property(out_sts, filename=str(atom_prop_outfile))
 
-    logger.info(f"Wrote molecule properties to {mol_prop_outfile}\n"
-                f"Wrote atom properties (XYZ, forces) to {atom_prop_outfile}.")
+    logger.debug(
+        f"Wrote molecule properties to {mol_prop_outfile}\n"
+        f"Wrote atom properties (XYZ, forces) to {atom_prop_outfile}.")
     if settings.output_metadata_file:
         metadata_outfile = Path(settings.output_metadata_file).resolve()
         write_metadata(out_sts, filename=str(metadata_outfile))
-        logger.info(f"Wrote metadata to {metadata_outfile}")
+        logger.debug(f"Wrote metadata to {metadata_outfile}")
+
+    # Remove init_sts_pkl when the pipeline completes successfully
+    if init_sts_pkl.exists():
+        init_sts_pkl.unlink()
+        logger.debug(f"Removed initial structures pickle file: {init_sts_pkl}")
     return out_sts
