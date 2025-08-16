@@ -13,7 +13,9 @@ import warnings
 import subprocess
 from pathlib import Path
 from tabulate import tabulate
+
 import polars
+import pyarrow.parquet as pq
 
 from mqc_pipeline.util import get_default_logger, change_dir
 
@@ -115,13 +117,19 @@ def main():
         raise SystemExit(
             f"Input file must be a CSV or Parquet file, got: {infile}")
 
-    # Get number of rows without loading all data
+    # Get number of rows and column names without loading all data
     if infile.suffix == '.csv':
-        num_inputs = polars.scan_csv(
-            str(infile)).collect(streaming=True).height
-    else:  # Parquet file
-        import pyarrow.parquet as pq
+        lazy_frame = polars.scan_csv(infile)
+        num_inputs = lazy_frame.collect(engine="streaming").height
+        col_names = lazy_frame.collect_schema().names()
+    else:
         num_inputs = pq.read_metadata(str(infile)).num_rows
+        col_names = pq.ParquetFile(infile).schema.names
+
+    if 'xyz_block' not in col_names:
+        raise SystemExit(
+            f"Input file must contain 'xyz_block' column, existing columns: {col_names}"
+        )
 
     logger.info(f"{infile} contains {num_inputs} molecules")
 
