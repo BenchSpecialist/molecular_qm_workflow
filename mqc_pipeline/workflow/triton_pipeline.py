@@ -297,7 +297,7 @@ def add_vdw_volume_batch(sts: list, num_workers: int = TOTAL_CPUS_PER_NODE):
 class SanitizeXYZOutput:
     is_valid: bool
     out_st: Structure | None = None
-    error_message: str | None = None
+    error_message: str = ''
 
 
 def sanitize_relaxed_xyz(st) -> SanitizeXYZOutput:
@@ -355,7 +355,7 @@ def sanitize_relaxed_xyz(st) -> SanitizeXYZOutput:
             out_st=st,  # still save the structure but add error message
             error_message=f'Radical electrons found - {radical_electrons}')
 
-    return SanitizeXYZOutput(is_valid=True, out_st=st, error_message=None)
+    return SanitizeXYZOutput(is_valid=True, out_st=st)
 
 
 def sanitize_xyz_parallel(sts: list,
@@ -375,10 +375,12 @@ def sanitize_xyz_parallel(sts: list,
     # Collect structures with radical electrons and dump them to a file
     radical_sts = [
         result.out_st for result in results
-        if 'Radical electrons' in result.error_message
+        if 'Radical electrons' in result.error_message and not result.is_valid
     ]
-    radical_st_outfile = Path.cwd().parent / Path(
-        f'{Path.cwd().name}_radical_{len(radical_sts)}.pkl')
+    radical_st_dir = Path.cwd().parent / 'radical_sts'
+    radical_st_dir.mkdir(parents=True, exist_ok=True)
+    radical_st_outfile = radical_st_dir / Path(
+        f'{Path.cwd().name}_{len(radical_sts)}_radical_sts.pkl')
     with open(radical_st_outfile, 'wb') as f:
         pickle.dump(radical_sts, f)
     logger.info(
