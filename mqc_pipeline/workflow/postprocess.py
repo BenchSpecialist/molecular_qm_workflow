@@ -32,7 +32,7 @@ def combine_csv_files_chunk(outfile_paths: list[Path],
     print("\nUsing chunked processing for combining CSV files.")
     combined_df = _combine_with_chunking(csv_files, chunk_size=files_per_chunk)
     print(f"Columns: {combined_df.columns} ")
-    print(combined_df.head(5))  # Display the first 10 rows
+    print(f'First 5 rows: {combined_df.head(5)}')
 
     # Write output
     from mqc_pipeline.util import write_df_to_parq_duckdb
@@ -129,6 +129,7 @@ def combine_csv_files_parallel(outfile_paths: list[Path],
     """
     import multiprocessing as mp
     from concurrent.futures import ProcessPoolExecutor, as_completed
+    import gc
 
     if n_workers is None:
         # 32 cores on fs-s-login-001
@@ -149,20 +150,35 @@ def combine_csv_files_parallel(outfile_paths: list[Path],
     ]
 
     # Process chunks in parallel
+    chunk_results = []
     with ProcessPoolExecutor(max_workers=n_workers) as executor:
-        future_to_chunk = {
-            executor.submit(_process_chunk, chunk): chunk
-            for chunk in file_chunks
-        }
+        # Submit all tasks
+        futures = [
+            executor.submit(_process_chunk, chunk) for chunk in file_chunks
+        ]
 
-        chunk_results = []
-        for future in as_completed(future_to_chunk):
-            chunk_results.append(future.result())
+        # Collect results as they complete
+        chunk_results = [future.result() for future in as_completed(futures)]
+
+    # Force garbage collection after executor is closed
+    gc.collect()
 
     # Combine all chunks
-    combined_df = polars.concat(chunk_results, how='diagonal')
+    try:
+        combined_df = polars.concat(chunk_results, how='vertical')
+    except polars.exceptions.PolarsError as e:
+        # Handle various Polars-specific errors that might occur during concat
+        logger.debug(
+            f"Vertical concat failed with error: {e}. Trying diagonal concat for large datasets."
+        )
+        combined_df = polars.concat(chunk_results, how='diagonal')
+
     print(f"Columns: {combined_df.columns} ")
-    print(combined_df.head(5))  # Display the first 10 rows
+    print(f'First 5 rows: {combined_df.head(5)}')
+
+    # Free up memory from chunk results
+    del chunk_results
+    gc.collect()
 
     # Write output
     from mqc_pipeline.util import write_df_to_parq_duckdb

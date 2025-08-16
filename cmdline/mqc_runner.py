@@ -230,18 +230,22 @@ def main():
                     if (batch_dir / outfile).exists()
                 ]
                 if outfile_paths:
-                    # multiprocessing version have huge memory overhead,
-                    # e.g. atom_property table with ~66 million rows cannot be processed
-                    if "atom_property" in str(outfile):
-                        combine_csv_files_chunk(outfile_paths,
-                                                mol_out_format=out_format,
-                                                files_per_chunk=60)
-                    else:
+                    # Only use parallel processing for molecule_property table
+                    if outfile_paths[0].stem == 'molecule_property':
                         # For molecule_property table with ~2 million rows,
                         # multiprocessing reduces runtime from 70.4 seconds to 6.2 seconds
+                        # However, multiprocessing version have huge memory overhead
+                        # (e.g. atom_property table with ~66 million rows cannot be processed)
+                        # and garbage collection is not effective
+                        # so the parallel version can only be used once in one run
                         combine_csv_files_parallel(outfile_paths,
                                                    mol_out_format=out_format,
                                                    n_workers=4)
+                    else:
+                        combine_csv_files_chunk(outfile_paths,
+                                                mol_out_format=out_format,
+                                                files_per_chunk=60)
+
             # Combine "FAILED_INPUTS.txt" files
             num_failed_input_files = sum(1 for batch_dir in batch_dirs
                                          if (batch_dir /
