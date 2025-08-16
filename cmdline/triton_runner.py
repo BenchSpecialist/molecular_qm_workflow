@@ -347,7 +347,7 @@ def main():
         # Track submitted jobs
         submitted_jobs = []
         start_idx = 0
-        node_job_counts = {node: 0 for node in active_nodes}
+        node2jobids = {node: [] for node in active_nodes}
 
         # Distribute jobs across nodes
         node_idx = 0
@@ -355,15 +355,11 @@ def main():
             for _ in range(num_jobs):
                 node_name = active_nodes[node_idx]
                 batch_smiles = smiles_list[start_idx:start_idx + batch_size]
+                # Create a unique directory for each job on this node
                 job_dir_name = f"batch_{start_idx}-{start_idx + batch_size-1}"
                 start_idx += batch_size
 
-                # Create a unique directory for each job on this node
-                # job_idx = node_job_counts[node_name]
-                # job_dir_name = f"{node_name}_{job_idx}"
-                node_job_counts[node_name] += 1
                 batch_dir = output_dir / job_dir_name
-
                 batch_dir.mkdir(parents=True, exist_ok=True)
 
                 batch_file = batch_dir / "input_smiles.pkl"
@@ -379,27 +375,28 @@ def main():
                 if job_id:
                     submitted_jobs.append(
                         (job_dir_name, node_name, job_id, len(batch_smiles)))
+                    node2jobids[node_name].append(job_id)
 
                 # Move to next node in round-robin fashion
                 node_idx = (node_idx + 1) % len(active_nodes)
 
         ## Print summary of submitted jobs
-        node_job_counts = list(node_job_counts.items())
+        node_job_counts = [(node, len(job_ids), ','.join(job_ids))
+                           for node, job_ids in node2jobids.items() if job_ids]
         # Sort by nodename
         node_job_counts.sort(key=lambda x: x[0])
         node_jobs_info = tabulate(node_job_counts,
-                                  headers=['Node', 'Num_jobs'],
+                                  headers=['Node', 'Num_jobs', 'Job IDs'],
                                   tablefmt="rounded_outline",
-                                  colalign=("left", "right"))
-        # Sort by nodename
-        submitted_jobs.sort(key=lambda x: x[1])
-        job_info = tabulate(
+                                  colalign=("left", "right", "left"))
+
+        job_dir_info = tabulate(
             submitted_jobs,
             headers=['Job Directory', 'Node', 'Job ID', 'Num_SMILES'],
             tablefmt="simple",
             colalign=("left", "left", "left", "right"))
         logger.info(
-            f"Submitted {len(submitted_jobs)} jobs:\n{node_jobs_info}\n{job_info}"
+            f"Submitted {len(submitted_jobs)} jobs:\n{node_jobs_info}\n{job_dir_info}"
         )
         print(
             f"Total {len(submitted_jobs)} jobs on {len(active_nodes)} nodes:\n{node_jobs_info}"
@@ -422,7 +419,7 @@ def _submit_job(output_dir: str, node_name: str, cached_config: str,
     job_log_path = job_log_dir / f"{batch_dir_name}.log"
 
     # Create the SLURM command
-    slurm_cmd = SLURM_CMD.format(JOB_NAME=batch_dir_name.lstrip('fs-sn-'),
+    slurm_cmd = SLURM_CMD.format(JOB_NAME=node_name.lstrip('fs-sn-'),
                                  JOB_LOG=job_log_path,
                                  NODE_NAME=node_name,
                                  PYTHON_EXE=_PYTHON_EXE,
