@@ -1,7 +1,8 @@
 #!/mnt/filesystem/dev_renkeh/mqc-env/bin/python
 """
-Cmdline utility to run molecular geometry optimization via Triton inference server,
-and subsequent property calculations using extended AIMNET2 model or DFT.
+Cmdline utility that takes SMILES strings as input, run batched molecular geometry
+optimization using AIMNET2 via Triton inference server, and subsequent property
+calculations using extended AIMNET2 model or DFT.
 
 Configure environment variables to allow this script to be executed from any location.
 ```
@@ -130,60 +131,6 @@ def _parse_args():
                         help="Write the default configuration file and exit.")
 
     return parser.parse_args()
-
-
-def _distribute_inputs_with_max_size(
-        num_inputs: int,
-        num_nodes: int,
-        max_size: int = MAX_MOLS_PER_JOB) -> list[tuple[int, int]]:
-    """
-    Distribute inputs across nodes for batch processing with a maximum batch size limit.
-
-    :param num_inputs: Total number of input items to process
-    :param num_nodes: Number of available nodes
-    :param max_size: Maximum number of inputs per job
-
-    :return: List of (batch_size, num_jobs_for_this_size) tuples
-    """
-    total_jobs = (num_inputs + max_size - 1) // max_size
-    base_jobs_per_node = total_jobs // num_nodes
-    nodes_with_extra = total_jobs % num_nodes
-
-    distribution = []
-
-    # Nodes with base number of jobs
-    if base_jobs_per_node > 0:
-        distribution.append(
-            (max_size, base_jobs_per_node * (num_nodes - nodes_with_extra)))
-
-    # Nodes with one extra job
-    if nodes_with_extra > 0:
-        distribution.append(
-            (max_size, (base_jobs_per_node + 1) * nodes_with_extra))
-
-    # Handle the last partial job
-    remaining = num_inputs % max_size
-    if remaining > 0:
-        # Replace one full job with a partial job
-        if distribution:
-            last_batch_size, last_count = distribution[-1]
-            if last_count > 1:
-                distribution[-1] = (last_batch_size, last_count - 1)
-                distribution.append((remaining, 1))
-            else:
-                distribution[-1] = (remaining, 1)
-        else:
-            distribution.append((remaining, 1))
-
-    count = sum(batch_size * n for batch_size, n in distribution)
-    if count != num_inputs:
-        raise SystemExit(
-            f"_distribute_inputs_with_max_size: Total input count {count} does not match expected {num_inputs}"
-        )
-    logger.debug(
-        f"Distributed {num_inputs} inputs across {num_nodes} nodes with max size {max_size}: {distribution}"
-    )
-    return distribution
 
 
 def main():
@@ -338,11 +285,21 @@ def main():
         # TODO: this reads all SMILES strings into memory; may not be suitable
         # for large datasets
         smiles_list = read_smiles(settings.input_file)
-        # Create jobs based on input size, available nodes, and max batch size
-        job_distribution = _distribute_inputs_with_max_size(
-            num_inputs=len(smiles_list),
-            num_nodes=len(active_nodes),
-            max_size=MAX_MOLS_PER_JOB)
+        num_inputs = len(smiles_list)
+
+        n_full_size_jobs = num_inputs // MAX_MOLS_PER_JOB
+        n_remainder_jobs = int(num_inputs % MAX_MOLS_PER_JOB > 0)
+        job_distribution = [(MAX_MOLS_PER_JOB, n_full_size_jobs),
+                            (num_inputs % MAX_MOLS_PER_JOB, n_remainder_jobs)]
+        # sanity check
+        count = sum(batch_size * n for batch_size, n in job_distribution)
+        if count != num_inputs:
+            raise SystemExit(
+                f"Total input count {count} does not match expected {num_inputs}"
+            )
+        logger.debug(
+            f"Distributed {num_inputs} inputs (batch_size, num_jobs_for_this_size): {job_distribution}"
+        )
 
         # Track submitted jobs
         submitted_jobs = []
