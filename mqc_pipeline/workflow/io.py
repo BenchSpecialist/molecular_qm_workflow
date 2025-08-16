@@ -148,3 +148,41 @@ def write_xyz_dir_from_csv(csv_path: str | Path,
         num_xyz += 1
 
     return num_xyz
+
+
+def get_sts_from_file(csv_or_parq: str, start_idx: int,
+                      batch_size: int) -> list[Structure]:
+    """
+    Get a list of Structure objects from a CSV or Parquet file, with the specified
+    range of rows.
+    The input file must contain a column named 'xyz_block' with XYZ block strings,
+    and optionally a column named 'smiles' with SMILES strings.
+
+    :param csv_or_parq: Path to the input CSV or Parquet file.
+    :param start_idx: Starting index of the rows to read.
+    :param batch_size: Number of rows to read.
+
+    :return: List of Structure objects.
+    """
+    XYZ_COL_NAME = "xyz_block"
+    SMILES_COL_NAME = "smiles"
+
+    infile = Path(csv_or_parq)
+    if infile.suffix not in ['.csv', '.parquet', '.parq']:
+        raise SystemExit(
+            f"Input file must be a CSV or Parquet file, got: {infile}")
+
+    df = polars.read_csv(
+        infile) if infile.suffix == '.csv' else polars.read_parquet(infile)
+    if XYZ_COL_NAME not in df.columns:
+        raise SystemExit(f"Input file must contain '{XYZ_COL_NAME}' column.")
+
+    # Read the specified range of rows
+    df = df.slice(offset=start_idx, length=batch_size)
+    sts = []
+    for row in df.rows(named=True):
+        st = Structure.from_xyz_block(row[XYZ_COL_NAME])
+        st.smiles = row.get(SMILES_COL_NAME, None)
+        sts.append(st)
+
+    return sts

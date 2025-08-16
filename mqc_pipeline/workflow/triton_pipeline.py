@@ -401,27 +401,35 @@ def sanitize_xyz_parallel(sts: list,
     return out_sts
 
 
-def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
+def run_pipeline(inputs: list[str | Structure],
+                 settings: TritonPipelineSettings):
     t_start = time.perf_counter()
+    if len(inputs) == 0:
+        logger.error("No inputs provided.")
+        return
 
     # Get allocated CPUs from SLURM env, as multiprocessing.cpu_count() always
     # returns the total number of CPUs on a compute node, not the allocated ones.
     num_cpus = int(os.environ.get('SLURM_CPUS_ON_NODE', TOTAL_CPUS_PER_NODE))
     # Auto-scale number of workers based on workload and CPU count
-    max_workers = get_optimal_workers(total_inputs=len(smiles_list),
+    max_workers = get_optimal_workers(total_inputs=len(inputs),
                                       min_items_per_worker=1000,
                                       cpu_count=num_cpus)
 
-    # Validate SMILES strings in parallel
-    smiles_list = validate_smiles(smiles_list, num_workers=max_workers)
+    init_sts_pkl = Path(f'init_sts.pkl')
+    if isinstance(inputs[0], Structure):
+        init_sts = inputs
+    elif isinstance(inputs[0], str):
+        # Validate SMILES strings in parallel
+        smiles_list = validate_smiles(inputs, num_workers=max_workers)
 
-    # Convert SMILES strings to 3D structures in parallel
-    init_sts = smiles_to_structure_batch(smiles_list, num_workers=num_cpus)
-    # Dump initial structures to a pickle file, as this is the most expensive step
-    # saving initial structures helps reduce the time cost of re-running the pipeline
-    init_sts_pkl = Path(f'init_{len(init_sts)}_sts.pkl')
-    with open(init_sts_pkl, 'wb') as f:
-        pickle.dump(init_sts, f)
+        # Convert SMILES strings to 3D structures in parallel
+        init_sts = smiles_to_structure_batch(smiles_list, num_workers=num_cpus)
+
+        # Dump initial structures to a pickle file, as this is the most expensive step
+        # saving initial structures helps reduce the time cost of re-running the pipeline
+        with open(init_sts_pkl, 'wb') as f:
+            pickle.dump(init_sts, f)
 
     # Optimize structures using Triton inference server
     opt_sts = optimize_sts_by_triton(init_sts, batch_size=BATCH_SIZE_PER_GPU)
@@ -470,8 +478,7 @@ def run_pipeline(smiles_list: list[str], settings: TritonPipelineSettings):
     logger.info(
         f"Total time: {time_cost:.2f} seconds to output {len(out_sts)} structures ({avg_cost_time:.2f} seconds per structure)"
     )
-    logger.info(
-        f'Success percentage: {len(out_sts) / len(smiles_list) * 100:.2f}%')
+    logger.info(f'Success percentage: {len(out_sts) / len(inputs) * 100:.2f}%')
 
     mol_prop_outfile = Path(settings.output_molecule_property_file).resolve()
     atom_prop_outfile = Path(settings.output_atom_property_file).resolve()
