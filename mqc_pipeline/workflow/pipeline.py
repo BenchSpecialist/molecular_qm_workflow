@@ -26,8 +26,8 @@ FAILED_INPUTS = Path("FAILED_INPUTS.txt")
 
 def _log_failed_inputs(error_msg: str) -> None:
     logger.error(error_msg)
-    with FAILED_INPUTS.open('a') as fp:
-        fp.write(f'{error_msg}\n')
+    with open(FAILED_INPUTS, "a", encoding="utf-8", errors="ignore") as f:
+        f.write(f'{error_msg}\n')
 
 
 def run_one_molecule(smiles_or_st: str | Structure,

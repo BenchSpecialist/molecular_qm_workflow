@@ -91,12 +91,12 @@ def _process_chunk(chunk_files):
     """
     chunk_dfs = []
     float_cols = 'triton_energy_ev homo lumo esp_min esp_max combustion_heat_ev vdw_volume_angstrom3'
-
+    str_cols = ['unique_id', 'smiles', 'canonical_smiles']
     for csv_file in chunk_files:
         df = polars.read_csv(csv_file, schema_overrides=SCHEMA_OVERRIDES)
         # Try to cast string columns to float if they contain numeric data
         for col in df.columns:
-            if df[col].dtype == polars.Utf8:
+            if df[col].dtype == polars.Utf8 and col not in str_cols:
                 try:
                     # Check first 10 non-null values to see if they're numeric
                     sample_values = df.select(

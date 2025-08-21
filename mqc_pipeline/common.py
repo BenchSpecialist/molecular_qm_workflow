@@ -45,6 +45,9 @@ class Structure:
         # Automatically generate a unique key if not provided after initialization
         if self.unique_id is None:
             self.unique_id = str(uuid4().int)[:_UNIQUE_KEY_LENGTH]
+        if self.smiles:
+            # make sure smiles is Unicode and strip any leading/trailing whitespace
+            self.smiles = str(self.smiles).strip()
         if isinstance(self.xyz, list):
             self.xyz = np.array(self.xyz)
         if isinstance(self.elements, np.ndarray):
