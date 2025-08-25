@@ -111,7 +111,8 @@ def list_object_sizes(bucket_name: str) -> None:
 
     print(f"Objects in bucket '{bucket_name}':")
     for obj in objects:
-        print(f"{obj['Key']}: {get_human_readable_size(obj['Size'])}")
+        print(f"{obj['Key']}, {get_human_readable_size(obj['Size'])}")
+        # print(f"{bucket_name}, {obj['Key']}")
 
 
 def get_object_keys(bucket_name: str) -> list[str]:
