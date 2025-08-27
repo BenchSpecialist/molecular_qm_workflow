@@ -283,7 +283,12 @@ def get_properties_main(st: Structure,
                 f"{st.smiles} (id={st.unique_id}): Failed to get isotropic polarizability: {str(e)}"
             )
 
-    if return_fluoride_bde and 'F' in st.elements:
+    if return_fluoride_bde and 'F' in st.elements and st.charge > 0:
+        logger.debug(
+            f'Skip F-dissociation energy calculation for cation of charge {st.charge}'
+        )
+    if return_fluoride_bde and 'F' in st.elements and st.charge <= 0:
+        # Only compute F-dissociation energy for anions/neutral species
         try:
             st, st.metadata['dft_fluoride_bde_time'] = timeit(
                 calc_fluoride_bond_dissociation_energy,
