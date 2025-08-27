@@ -43,9 +43,21 @@ def run_one_molecule(smiles_or_st: str | Structure,
         try:
             st = smiles_to_structure(smiles, method=smiles_to_3d_method)
         except Exception as e:
-            err_msg = f"{smiles}: 3D structure generation failed - {str(e)}"
-            _log_failed_inputs(err_msg)
-            return
+            # If the method was rdkit and it failed, try again with openbabel
+            if smiles_to_3d_method == "rdkit":
+                logger.debug(
+                    f"{smiles}: SMILES to 3D structure generation with RDKit failed, retrying with openbabel"
+                )
+                try:
+                    st = smiles_to_structure(smiles, method="openbabel")
+                except Exception as e2:
+                    err_msg = f"{smiles}: 3D structure generation failed with both RDKit and openbabel - {str(e2)}"
+                    _log_failed_inputs(err_msg)
+                    return
+            else:
+                err_msg = f"{smiles}: 3D structure generation failed - {str(e)}"
+                _log_failed_inputs(err_msg)
+                return
         logger.info(f"{smiles}: SMILES to 3D structure generation succeeded.")
     else:
         raise RuntimeError(
