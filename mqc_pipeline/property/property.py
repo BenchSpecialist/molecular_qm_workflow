@@ -11,7 +11,7 @@ from ..settings import PySCFOption, ESPGridsOption
 from ..constants import HARTREE_TO_EV
 
 from .stability import get_homo_lumo_levels
-from .esp import generate_esp_grids, get_esp_range
+from .esp import get_esp
 from .volume import get_vdw_volume
 from .combustion_heat import calc_combustion_heat
 from .bde import calc_fluoride_bond_dissociation_energy
@@ -212,15 +212,19 @@ def get_properties_main(st: Structure,
     # ESP calculations can only run on GPUs
     if return_esp_range:
         try:
-            # Generate grids for ESP calculations
-            grids = generate_esp_grids(
-                mol,
+            esp_result, st.metadata['dft_esp_time'] = timeit(
+                get_esp,
+                pyscf_mol=mol,
+                one_rdm=rdm1,
                 rcut=esp_options.solvent_accessible_region,
                 space=esp_options.grid_spacing,
                 solvent_probe=esp_options.probe_depth)
-            esp_range, st.metadata['dft_esp_time'] = timeit(
-                get_esp_range, mol=mol, grids=grids, one_rdm=rdm1) # yapf:disable
-            st.property[ESP_MIN_KEY], st.property[ESP_MAX_KEY] = esp_range
+            st.property[ESP_MIN_KEY] = esp_result[0]
+            st.property[ESP_MAX_KEY] = esp_result[1]
+            # For anions, a mol block representing Li+ binding site also gets returned
+            if len(esp_result) == 3:
+                st.property['Li_binding_site'] = esp_result[2]
+
         except Exception as e:
             logger.error(f"{st.smiles} (id={st.unique_id}): {str(e)}")
 

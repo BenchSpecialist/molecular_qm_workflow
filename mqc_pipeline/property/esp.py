@@ -1,7 +1,7 @@
 import numpy as np
 from functools import lru_cache
 
-from ..constants import ANGSTROM_TO_BOHR, HARTREE_TO_EV, VDW_RADII_ANGSTROM
+from ..constants import ANGSTROM_TO_BOHR, HARTREE_TO_EV, VDW_RADII_ANGSTROM, BOHR
 from ..import_util import import_cupy
 from ..util import get_default_logger
 
@@ -11,6 +11,10 @@ logger = get_default_logger()
 # threshold, the ESP calculation is considered to be unreliable.
 # -2.0 to 2.0 Eh
 _ESP_ABS_THRESHOLD_EV_SPIN0 = 55
+
+SOLVENT_REGION_CUTOFF = 3.0  # in Angstrom
+GRID_SPACING = 0.5  # in Angstrom
+SOLVENT_PROBE = 1.1  # in Angstrom
 
 
 @lru_cache(maxsize=1)
@@ -47,9 +51,9 @@ def _get_esp_radii(solvent_probe: float) -> np.ndarray:
 
 
 def generate_esp_grids(mol,
-                       rcut: float = 3.0,
-                       space: float = 0.5,
-                       solvent_probe: float = 1.1) -> np.ndarray:
+                       rcut: float = SOLVENT_REGION_CUTOFF,
+                       space: float = GRID_SPACING,
+                       solvent_probe: float = SOLVENT_PROBE) -> np.ndarray:
     """
     Generate grid points for electrostatic potential (ESP) calculation
 
@@ -164,32 +168,45 @@ def _get_esp_range_old(mol, grids: np.ndarray,
     return esp_min, esp_max
 
 
-def get_esp_range(mol, grids: np.ndarray,
-                  one_rdm: np.ndarray) -> tuple[float, float]:
+def get_esp(pyscf_mol, one_rdm: np.ndarray, **kwargs) -> tuple:
     """
     Calculate electrostatic potential (ESP) for a molecule with the given grid points.
 
-    :param mol: 'pyscf.gto.mole.Mole' object containing atomic coordinates, nuclear charges,
+    :param pyscf_mol: 'pyscf.gto.mole.Mole' object containing atomic coordinates, nuclear charges,
                 and basis set info
-    :param grids: Array of 3D coordinates where ESP will be evaluated (shape: [Ngrid, 3])
     :param one_rdm: One-electron reduced density matrix representing electron distribution
                     (shape: [Nbasis, Nbasis])
 
-    :return: Minimum and maximum ESP values across all grid points in eV unit.
+    Optional parameters (passed as kwargs):
+    :param grids: Array of 3D coordinates where ESP will be evaluated (shape: [Ngrid, 3])
+    :param rcut: Cut-off distance (in angstrom) for the solvent accessible region around the molecule (default: 3.0)
+    :param space: Grid spacing (in angstrom) for the regularly spaced grid points (default: 0.5)
+    :param solvent_probe: Radius (in angstrom) determining the envelope around the molecule (default: 1.1)
+
+    :return: For neutral and cationic species, a 2-tuple containing minimum and maximum ESP values in eV.
+             For anionic species, a 3-tuple containing minimum ESP, maximum ESP, and a MolBlock string
+             representing the modified structure with Li atoms added at potential binding sites.
     """
     cupy, _CUPY_AVAILABLE = import_cupy()
     if not _CUPY_AVAILABLE:
         raise RuntimeError(
             "get_esp_range: Required CuPy package not available.")
     int3c1e = import_int3c1e()
+    if 'grids' not in kwargs:
+        grids = generate_esp_grids(pyscf_mol,
+                                   rcut=kwargs.get('rcut',
+                                                   SOLVENT_REGION_CUTOFF),
+                                   space=kwargs.get('space', GRID_SPACING),
+                                   solvent_probe=kwargs.get(
+                                       'solvent_probe', SOLVENT_PROBE))
     # Calculate electronic contribution to ESP at grid points
     # This integral represents the Coulomb potential from the electron density
     # v_grids_e = ∫ ρ(r')/|r-r'| dr', where ρ is the electron density
-    v_grids_e = int3c1e.int1e_grids(mol, grids, dm=one_rdm)
+    v_grids_e = int3c1e.int1e_grids(pyscf_mol, grids, dm=one_rdm)
 
     # Move calculations to GPU for better performance
-    qm_xyz = cupy.array(mol.atom_coords())
-    qm_charges = cupy.array(mol.atom_charges())
+    qm_xyz = cupy.array(pyscf_mol.atom_coords())
+    qm_charges = cupy.array(pyscf_mol.atom_charges())
     grids_cu = cupy.array(grids)
 
     # Calculate distances between each nucleus and each grid point
@@ -206,7 +223,25 @@ def get_esp_range(mol, grids: np.ndarray,
     # Electronic contribution has opposite sign (negative charges)
     # Total ESP = nuclear contribution - electronic contribution
     esp_vals = cupy.asnumpy(z_val - v_grids_e)
+    if pyscf_mol.charge < 0:
+        # For anions, also identify potential binding sites for Li+
+        return get_esp_range_and_binding_site(pyscf_mol, grids, esp_vals)
+    else:
+        # For neutral and cationic species, just return the ESP range
+        return get_esp_range(esp_vals)
 
+
+def get_esp_range(esp_vals: np.ndarray) -> tuple[float, float]:
+    """
+    Determine the minimum and maximum electrostatic potential (ESP) values from
+    the provided ESP values array.
+
+    :param esp_vals: Array of ESP values at the specified grid points. For open-shell species,
+                     this can be a 2D array with shape (2, Ngrid) where the
+                     first row corresponds to alpha spin and the second to beta spin.
+                     For closed-shell species, this is a 1D array with shape (Ngrid,).
+    :return: Minimum and maximum ESP values across all grid points in eV unit.
+    """
     # For open shell species, esp_vals has shape (2, Ngrid) where esp_vals[0] is
     # alpha ESP and esp_vals[1] is beta ESP.
     # Total ESP at any point is the contribution from all electrons, regardless of spin.
@@ -224,4 +259,74 @@ def get_esp_range(mol, grids: np.ndarray,
                 f"ESP range (min: {esp_min:.2f} eV, max: {esp_max:.2f} eV) for "
                 f"closed shell molecule is beyond the expected range (-{_ESP_ABS_THRESHOLD_EV_SPIN0} to {_ESP_ABS_THRESHOLD_EV_SPIN0} eV)."
             )
+        return esp_min, esp_max
+
+
+def get_esp_range_and_binding_site(
+        pyscf_mol,
+        grids: np.ndarray,
+        esp_vals: np.ndarray,
+        tolerance=0.01) -> tuple[float, float, str] | tuple[float, float]:
+    """
+    Identify potential binding sites for a Li+ ion based on the electrostatic potential (ESP)
+    values calculated on a grid around the molecule. The function places a Li atom at each
+    grid point where the ESP is within a specified tolerance of the minimum ESP value,
+    and then applies a PCA-based rotation to minimize atomic occlusion. The resulting
+    structure is returned in MolBlock format.
+
+    :param pyscf_mol: PySCF Molecule object containing molecular information
+    :param grids: Array of 3D coordinates where ESP was evaluated (shape: [Ngrid, 3])
+    :param esp_vals: Array of ESP values at the specified grid points (shape: [Ngrid,])
+    :param tolerance: Fractional tolerance around the minimum ESP value to consider
+                      for placing Li atoms (default: 0.01, i.e., 1%)
+    :return: Tuple containing minimum and maximum values of ESP in eV, also a
+             MolBlock string representing the modified structure with Li atoms added
+             if successful. If an error occurs, only the ESP min and max are returned.
+    """
+    from rdkit import Chem
+    from rdkit.Chem import rdDetermineBonds
+    from rdkit.Geometry import Point3D
+    from sklearn.decomposition import PCA
+
+    esp_min, esp_max = get_esp_range(esp_vals)
+    # Find the points within `tolerance` of the ESP min
+    tol_cutoff = esp_min + tolerance * abs(esp_min)
+    near_min_points = grids[esp_vals <= tol_cutoff]
+
+    try:
+        # Create an editable RDKit molecule to work with
+        editable_mol = Chem.RWMol(
+            Chem.MolFromXYZBlock(pyscf_mol.tostring(format='xyz')))
+        rdDetermineBonds.DetermineBonds(editable_mol, charge=pyscf_mol.charge)
+        conf = editable_mol.GetConformer()
+
+        # Place a Li atom at each near-min point
+        for point in near_min_points:
+            atom_idx = editable_mol.AddAtom(Chem.Atom('Li'))
+            x, y, z = point * BOHR
+            conf.SetAtomPosition(atom_idx, Point3D(float(x), float(y),
+                                                   float(z)))
+            editable_mol.GetAtomWithIdx(atom_idx).SetFormalCharge(+1)
+
+        # Run PCA to derive a rotation that minimizes atomic occlusion
+        num_atoms = editable_mol.GetNumAtoms()
+        coords = np.array(
+            [list(conf.GetAtomPosition(i)) for i in range(num_atoms)])
+        mol_center = coords.mean(axis=0)
+        coords_centered = coords - mol_center
+        pca = PCA(n_components=3)
+        pca.fit(coords_centered)
+        rot_matrix = pca.components_.T
+
+        # Apply rotation and re-add molecule centroid
+        rotated_coords = coords_centered @ rot_matrix + mol_center
+
+        # Update the coordinates of the conformer
+        for i in range(num_atoms):
+            conf.SetAtomPosition(i, Point3D(*rotated_coords[i]))
+
+        return esp_min, esp_max, Chem.MolToMolBlock(editable_mol)
+
+    except Exception as e:
+        logger.error(f"Error generating Li+ binding site: {str(e)}")
         return esp_min, esp_max
