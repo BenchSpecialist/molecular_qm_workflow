@@ -4,12 +4,14 @@ from pathlib import Path
 from typing import Callable, Optional
 from functools import partial
 
+from rdkit import Chem
+
 from ..settings import PipelineSettings, METHOD_AIMNet2, METHOD_DFT
 from ..common import Structure
 from ..smiles_util import smiles_to_structure
 from .. import optimize
 from ..property import get_properties_main
-from ..structure_io import write_molecule_property, write_atom_property, write_metadata
+from ..structure_io import write_molecule_property, write_atom_property, write_metadata, write_json
 from ..util import get_default_logger, setup_logger
 
 from .io import read_smiles, read_xyz_dir
@@ -22,6 +24,7 @@ ATOM_PROP_OUTFILE = "atom_property.{ext}"
 METADATA_OUTFILE = "metadata.csv"
 
 FAILED_INPUTS = Path("FAILED_INPUTS.txt")
+MAX_MOLECULES_FOR_JSON = 300
 
 
 def _log_failed_inputs(error_msg: str) -> None:
@@ -87,6 +90,13 @@ def run_one_molecule(smiles_or_st: str | Structure,
     logger.info(
         f"{st.smiles} (id={st.unique_id}): Property calculations done.")
 
+    if st.smiles:
+        # Generate canonical SMILES
+        st.property['canonical_smiles'] = Chem.MolToSmiles(
+            Chem.MolFromSmiles(st.smiles),
+            isomericSmiles=False,
+            canonical=True)
+
     st.metadata['total_time'] = round(time.perf_counter() - t_start, 4)
     return st
 
@@ -125,6 +135,12 @@ def run_one_batch(inputs: list[str] | list[Structure],
     total_count = len(inputs)
     defluorined_sts = []
 
+    if settings.write_json and len(inputs) > MAX_MOLECULES_FOR_JSON:
+        logger.warning(
+            "Writing JSON for each molecule is not recommended for large inputs "
+            f"(>{MAX_MOLECULES_FOR_JSON} molecules). Skipping JSON output.")
+
+    t_start = time.perf_counter()
     for i, smiles_or_st in enumerate(inputs):
         # The function does error handling/logging internally
         # and returns None if it fails.
@@ -138,6 +154,12 @@ def run_one_batch(inputs: list[str] | list[Structure],
             progress_logger.info(f"{i + 1}/{total_count} FAILED")
         else:
             out_sts.append(st)
+
+            json_outfile = ""
+            if settings.write_json:
+                json_outfile = f"{st.unique_id}.json"
+                write_json(st, json_outfile)
+
             if defluorined_st := st.metadata.get('defluorined_st'):
                 # If defluorined structure is available, add it to the output
                 defluorined_sts.append(defluorined_st)
@@ -146,7 +168,7 @@ def run_one_batch(inputs: list[str] | list[Structure],
             if (i + 1) % settings.progress_log_interval == 0 \
                 or i + 1 == total_count:
                 progress_logger.info(
-                    f"{i + 1}/{total_count} DONE in {st.metadata['total_time']} seconds"
+                    f"{i + 1}/{total_count} DONE in {st.metadata['total_time']} seconds. {st.smiles} {json_outfile}"
                 )
 
     ext = settings.output_file_format.lower()
@@ -178,6 +200,10 @@ def run_one_batch(inputs: list[str] | list[Structure],
     # Dump metadata of all structures to a CSV file
     write_metadata(out_sts + defluorined_sts, filename=METADATA_OUTFILE)
     logger.info(f"Wrote metadata to {os.getcwd()}/{METADATA_OUTFILE}")
+    total_time = round(time.perf_counter() - t_start, 4)
+    logger.info(
+        f"Total time: {total_time} seconds; {len(out_sts)}/{total_count} finished."
+    )
 
 
 def run_from_config_settings(settings: PipelineSettings) -> None:

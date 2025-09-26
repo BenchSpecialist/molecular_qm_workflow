@@ -260,8 +260,12 @@ class PipelineSettings(BaseModel):
     output_file_format: Literal["csv", "parquet", "parq"] = Field(
         default="csv",
         description=
-        "Output file format to write molecule-level and atom-level properties.\n"
+        "Columnar file format to write molecule-level and atom-level properties for all input molecules.\n"
         f"# Supported formats: {', '.join(SUPPORTED_COLUMNAR_FILE_FORMATS)}.")
+
+    write_json: bool = Field(
+        default=False,
+        description="Whether to write single-molecule result to JSON file.")
 
     progress_log_interval: int = Field(
         default=10,
