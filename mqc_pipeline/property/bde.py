@@ -16,7 +16,7 @@ logger = get_default_logger()
 
 # Pre-computed F- anion energies (in Eh) for use in BDE calculations
 F_ANION_ENERGIES = {
-    # b3lypg/6311g*, IEF-PCM/18.5, d3bj
+    # b3lypg/6311g*, IEF-PCM/20.0, d3bj
     "pcm_d3bj_e_tot": -99.96280459477289,
     # b3lypg/6311g*
     "gas_phase_e_tot": -99.82140880752829,
@@ -37,7 +37,7 @@ def _get_f_anion_energy(pyscf_options):
 
     # if pyscf_options._dft_level_str == "b3lypg_6311g*":
     #     if pyscf_options.solvent_method == "IEF-PCM" and \
-    #         pyscf_options.solvent_eps == 18.5 and \
+    #         pyscf_options.solvent_eps == 20.0 and \
     #         pyscf_options.dispersion.upper() == "D3BJ":
     #         e_f_anion = F_ANION_ENERGIES["pcm_d3bj_e_tot"]
 

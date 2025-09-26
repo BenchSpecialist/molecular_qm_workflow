@@ -22,7 +22,7 @@ _DEFAULT_SCF_MAX_CYCLE = 100  # default: 50 in pyscf
 _DEFAULT_SCF_CONV_TOL = 1e-09  # default: 1e-09 in pyscf
 _DEFAULT_GRIDS_LEVEL = 4  # default: 3 in pyscf
 _DEFAULT_SOLVENT_METHOD = 'IEF-PCM'
-_DEFAULT_SOLVENT_EPS = 18.5
+_DEFAULT_SOLVENT_EPS = 20.0
 # Grimme's D3 dispersion correction with Becke-Johnson damping
 _DEFAULT_DISPERSION = 'd3bj'
 
@@ -221,7 +221,7 @@ class PipelineSettings(BaseModel):
         description="Whether to use solvent effects in PySCF calculations.\n"
         f"# If True, uses default {_DEFAULT_SOLVENT_METHOD} with epsilon={_DEFAULT_SOLVENT_EPS}.\n"
         "# If tuple[str, float], the first element is the solvent method (e.g., 'IEF-PCM')\n"
-        "# and the second element is the solvent dielectric constant (e.g., 18.5)."
+        "# and the second element is the solvent dielectric constant (e.g., 20.0)."
     )
     pyscf_dispersion: str | None = Field(
         default=None,

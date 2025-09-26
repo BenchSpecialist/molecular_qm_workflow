@@ -113,9 +113,9 @@ class TritonPipelineSettings(BaseModel):
     dft_solvent: bool | tuple[str, float] = Field(
         default=False,
         description="Whether to use solvent effects in PySCF calculations.\n"
-        f"# If True, uses default IEF-PCM with epsilon=18.5.\n"
+        f"# If True, uses default IEF-PCM with epsilon=20.0.\n"
         "# If tuple[str, float], the first element is the solvent method (e.g., 'IEF-PCM')\n"
-        "# and the second element is the solvent dielectric constant (e.g., 18.5)."
+        "# and the second element is the solvent dielectric constant (e.g., 20.0)."
     )
     dft_dispersion: str | None = Field(
         default=None,
@@ -170,7 +170,7 @@ class TritonPipelineSettings(BaseModel):
         """
         # Determine solvent settings based on dft_solvent value
         solvent_method, solvent_eps = (
-            ('IEF-PCM', 18.5) if self.dft_solvent is True else
+            ('IEF-PCM', 20.0) if self.dft_solvent is True else
             self.dft_solvent if isinstance(self.dft_solvent, tuple) else
             (None, None))
         return PySCFOption(basis=self.dft_basis,

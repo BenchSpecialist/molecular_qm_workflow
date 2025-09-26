@@ -13,7 +13,7 @@ def test_PySCFOption():
     assert pyscf_option.basis == "6311g*"
     assert pyscf_option.dft_functional == "b3lypg"
     assert pyscf_option.solvent_method == 'IEF-PCM'
-    assert pyscf_option.solvent_eps == 18.5
+    assert pyscf_option.solvent_eps == 20.0
     assert pyscf_option.dispersion == 'd3bj'
 
 
@@ -108,7 +108,7 @@ def test_to_pyscf_options(tmp_cwd):
     config = PipelineSettings(**user_input)
     pyscf_options = config.to_pyscf_options()
     assert pyscf_options.solvent_method == "IEF-PCM"
-    assert pyscf_options.solvent_eps == 18.5
+    assert pyscf_options.solvent_eps == 20.0
 
     # Test with custom solvent settings (tuple)
     user_input["pyscf_solvent"] = ("COSMO", 78.36)
