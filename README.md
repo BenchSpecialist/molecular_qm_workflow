@@ -1,25 +1,10 @@
-# mqc_pipeline
-High-throughput molecular quantum chemistry (MQC) pipeline for geometry optimization and property calculation
+## Command-line interface
 
-## Setup
+Two command-line entrypoints for different computational approaches are provided. Both interfaces follow similar usage patterns with configuration YAML files and command-line arguments tailored to their respective computational backends.
 
-For detailed environment setup and installation instructions, please refer to [env_setup.md](env_setup.md).
+### 1. `mqc_runner.py` - DFT-based workflow
 
-### Pre-configured Environment
-
-The complete runtime environment for this pipeline has already been configured on the **Fluidstack cluster**. To access the cluster, connect via SSH:
-
-```bash
-ssh slurm@195.242.10.37
-```
-
-## Command-line API
-
-The mqc_pipeline provides two command-line interfaces for different computational approaches. Both interfaces follow similar usage patterns with configuration YAML files and command-line arguments tailored to their respective computational backends.
-
-### 1. `mqc_runner.py` - DFT-based Pipeline
-
-The [`mqc_runner.py`](https://github.com/Solid-Energy-Systems/mqc_pipeline/blob/main/cmdline/mqc_runner.py) interface provides an end-to-end solution for high-throughput molecular geometry optimization via GPU-accelerated DFT or machine learning potential (AIMNet2) via ASE interface, and subsequent property calculations using DFT. It automatically:
+The [`mqc_runner.py`](cmdline/mqc_runner.py) interface provides an end-to-end solution for high-throughput molecular geometry optimization via GPU-accelerated DFT or machine learning potential (AIMNet2) via ASE interface, and subsequent property calculations using DFT. It automatically:
 
 - **Batches** input molecules based on configuration settings
 - **Launches** parallelized jobs to the SLURM-managed GPU cluster
@@ -28,17 +13,17 @@ The [`mqc_runner.py`](https://github.com/Solid-Energy-Systems/mqc_pipeline/blob/
 - **Combines** output data from multiple batches into unified datasets
 - **Cleanup** distributed job files after successful execution
 
-### 2. `triton_runner.py` - ML-accelerated Pipeline
+### 2. `triton_runner.py` - ML-accelerated workflow
 
-The [`triton_runner.py`](https://github.com/Solid-Energy-Systems/mqc_pipeline/blob/main/cmdline/triton_runner.py) interface provides access to fast geometry relaxations via NVIDIA Triton inference servers, and efficient property calculations via our internal ML models or DFT calculations. The cmdline utility provides functionality to:
+The [`triton_runner.py`](cmdline/triton_runner.py) interface provides access to fast geometry relaxations via NVIDIA Triton inference servers, and efficient property calculations via our internal ML models or DFT calculations. The cmdline utility provides functionality to:
 
 - **Detect** or **launch** Triton inference server nodes
 - **Distribute** molecular calculations across available server nodes
 - **Process** results from all server nodes
 
-### How to run Triton Pipeline
+### How to run Triton workflow
 
-Please follow these steps strictly to run the Triton pipeline:
+Please follow these steps strictly to run the Triton workflow:
 
 1. Generate the `ACTIVE_TRITON_NODES.txt` file containing available Triton server nodes:
 ```bash
@@ -58,17 +43,17 @@ triton_runner.py --write-default-config <config.yaml>
 ```
 Edit this file to specify your input parameters and computational settings.
 
-4. Run the pipeline with the configuration file:
+4. Run the workflow with the configuration file:
 ```
 triton_runner.py --config <config.yaml>
 ```
 
 
-### How to run DFT pipeline
+### How to run DFT workflow
 
-The command-line utility has been pre-configured for the `slurm` user on the **Fluidstack cluster**. To get started, test the installation by running:
+To get started, test the installation of the command-line utility by running:
 ```
-slurm@fs-s-login-001:/mnt/filesystem$ mqc_runner.py --help
+$ mqc_runner.py --help
 usage: mqc_runner.py [-h] [--config YAML_FILE] [--write-default-config YAML_FILE] [--dry-run] [--combine-results] [--cleanup] [--extract-xyz XYZ_DIR]
 
 Cmdline utility to run molecular geometry optimization and property calculation pipeline.
@@ -86,14 +71,13 @@ options:
   --extract-xyz XYZ_DIR
                         Specify the directory and extract XYZ files from atom_property.csv.
 ```
-> **Note:** To submit jobs on the Fluidstack cluster, **your launch directory must be located within `/mnt/filesystem`**. This path is a shared mounted directory accessible by both the login nodes and all compute nodes. In contrast, the home directories of login and compute nodes are isolated. If you submit jobs from your home directory, they will fail silently—no output will be returned, and the jobs will effectively disappear.
 
 #### Step 1: Generate a Default Configuration File
 
 For first-time users, generate a default configuration file with all available options:
 
 ```bash
-slurm@fs-s-login-001:/mnt/filesystem$ mqc_runner.py --write-default-config config.yaml
+$ mqc_runner.py --write-default-config config.yaml
 ```
 
 The generated configuration file contains the following structure and default values:
@@ -107,7 +91,7 @@ input_file_or_dir:
 num_jobs: 1
 
 # Name of the SLURM job. Only relevant when num_jobs > 0.
-job_name: mqc_pipeline
+job_name: test
 
 # Method for geometry optimization.
 # If set to `null` and use xyz inputs, geometry optimization is skipped.
@@ -167,18 +151,16 @@ output_file_format: csv
 progress_log_interval: 10
 ```
 
-The minimal requirement to initialize the pipeline is specifying the input file path via the input_file_or_dir field.
+The minimal requirement for config is specifying the input file path via the input_file_or_dir field.
 
-#### Step 2: Execute the Pipeline
-
-Once your configuration file is properly set up, run the pipeline:
+Once your configuration file is properly set up, start the workflow by:
 ```bash
-slurm@fs-s-login-001:/mnt/filesystem$ mqc_runner.py --config config.yaml
+$ mqc_runner.py --config config.yaml
 ```
 
 ### Output Schema
 
-The pipeline generates structured output files containing molecular properties and computational metadata. When using the default CSV format, three primary files are created:
+The workflow generates structured output files containing molecular properties and computational metadata. When using the default CSV format, three primary files are created:
 
 ---
 

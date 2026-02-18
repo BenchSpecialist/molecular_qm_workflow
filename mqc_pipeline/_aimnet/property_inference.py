@@ -17,8 +17,9 @@ from .aimnet2 import AIMNet2
 from .config import load_yaml, build_module
 
 # merged_model_181.pt contains 175 parameters
-AIMNET_PROP_MODEL_PT = Path(
-    '/mnt/filesystem/dev_renkeh/aimnet-model-zoo/merged_model_181.pt')
+AIMNET_PROP_MODEL_PT = Path(os.environ.get("AIMNET_PROP_MODEL_PATH"))
+if AIMNET_PROP_MODEL_PT is None:
+    raise SystemExit("AIMNET_PROP_MODEL_PATH environment variable is not set.")
 AIMNET_MODEL_YAML = Path(__file__).parent / 'aimnet2.yaml'
 
 TOTAL_CPUS_PER_NODE = 128

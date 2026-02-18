@@ -1,4 +1,3 @@
-#!/mnt/filesystem/dev_renkeh/mqc-env/bin/python
 """
 Commandline API to run the molecular geometry optimization and property calculation pipeline.
 
@@ -10,13 +9,13 @@ export PYTHONPATH="/path/to/mqc_pipeline:$PYTHONPATH"
 
 Usage:
 - Generate a default configuration file:
-    $ mqc_runner.py --write-default-config <config.yaml>
+    $ python mqc_runner.py --write-default-config <config.yaml>
 
 - Run the pipeline with a configuration file:
-    $ mqc_runner.py --config <config.yaml>
+    $ python mqc_runner.py --config <config.yaml>
 
 - Batch inputs and write out SLURM scripts, but NOT submit for debugging:
-    $ mqc_runner.py --config <config.yaml> --dry-run
+    $ python mqc_runner.py --config <config.yaml> --dry-run
 """
 import os
 import shutil
@@ -33,7 +32,9 @@ from mqc_pipeline.util import get_default_logger, change_dir
 
 logger = get_default_logger()
 
-_PYTHON_EXE = "/mnt/filesystem/dev_renkeh/mqc-env/bin/python"
+_PYTHON_EXE = os.environ.get("PYTHON_EXE")
+if _PYTHON_EXE is None:
+    raise SystemExit("PYTHON_EXE environment variable is not set.")
 
 _SLURM_SH_DIR = "slurm_scripts"
 _SLURM_LOG_DIR = "slurm_logs"

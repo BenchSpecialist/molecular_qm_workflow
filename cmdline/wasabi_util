@@ -1,4 +1,3 @@
-#!/mnt/filesystem/dev_renkeh/mqc-env/bin/python
 """
 Cmdline utility for interacting with Wasabi S3 storage.
 
@@ -10,25 +9,25 @@ export WASABI_SECRET_KEY="your_secret_key"
 
 Usage:
 - List all buckets:
-    $ wasabi_util --ls-buckets
+    $ python wasabi_util.py --ls-buckets
 
 - List objects in the specified bucket:
-    $ wasabi_util --ls-objects <bucket_name>
+    $ python wasabi_util.py --ls-objects <bucket_name>
 
 - Upload a file to a bucket:
-    $ wasabi_util --upload <local_file> <bucket_name> <remote_path>
+    $ python wasabi_util.py --upload <local_file> <bucket_name> <remote_path>
 
 - Download a file from a bucket:
-    $ wasabi_util --download <bucket_name> <remote_path>
+    $ python wasabi_util.py --download <bucket_name> <remote_path>
 
 - Upload files from a CSV file:
-    $ wasabi_util --upload-from-csv <csv_file>
+    $ python wasabi_util.py --upload-from-csv <csv_file>
     Each row should contain BUCKET_NAME, LOCAL_FILE_PATH, REMOTE_PATH in order.
     Example row:
     materials-development, input.parq, remote_input.parquet
 
 - Download files from a CSV file:
-    $ wasabi_util --download-from-csv <csv_file>
+    $ python wasabi_util.py --download-from-csv <csv_file>
     Each row should contain BUCKET_NAME, REMOTE_PATH in order.
     Example row:
     snowflake-staging, MUPT1/part_0.parquet

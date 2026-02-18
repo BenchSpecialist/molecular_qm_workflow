@@ -1,5 +1,5 @@
 # Usage:
-# micromamba create --prefix /mnt/filesystem/dev_renkeh/mqc-env --file environment.yml
+# micromamba create --name mqc-env --file environment.yml
 name: mqc-env
 channels:
   - conda-forge

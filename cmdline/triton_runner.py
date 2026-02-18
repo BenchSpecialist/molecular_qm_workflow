@@ -1,4 +1,3 @@
-#!/mnt/filesystem/dev_renkeh/mqc-env/bin/python
 """
 Cmdline utility that takes SMILES strings as input, run batched molecular geometry
 optimization using AIMNET2 via Triton inference server, and subsequent property
@@ -40,7 +39,9 @@ from mqc_pipeline.util import get_default_logger, change_dir
 
 logger = get_default_logger()
 
-_PYTHON_EXE = "/mnt/filesystem/dev_renkeh/mqc-env/bin/python"
+PYTHON_EXE = os.environ.get("PYTHON_EXE")
+if PYTHON_EXE is None:
+    raise SystemExit("PYTHON_EXE environment variable is not set.")
 
 _ACTIVE_NODES_FILE = "ACTIVE_TRITON_NODES.txt"
 
@@ -379,7 +380,7 @@ def _submit_job(output_dir: str, node_name: str, cached_config: str,
     slurm_cmd = SLURM_CMD.format(JOB_NAME=node_name.lstrip('fs-sn-'),
                                  JOB_LOG=job_log_path,
                                  NODE_NAME=node_name,
-                                 PYTHON_EXE=_PYTHON_EXE,
+                                 PYTHON_EXE=str(PYTHON_EXE),
                                  CACHED_CONFIG=cached_config,
                                  BATCH_SMILES_FILE=batch_file)
 

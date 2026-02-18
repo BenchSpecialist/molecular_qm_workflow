@@ -1,4 +1,3 @@
-#!/mnt/filesystem/dev_renkeh/mqc-env/bin/python
 """
 Cmdline utility to read XYZs from a CSV/Parquet file, run molecular geometry
 optimization via Triton inference server and subsequent property calculations
@@ -20,6 +19,10 @@ import pyarrow.parquet as pq
 from mqc_pipeline.util import get_default_logger, change_dir
 
 logger = get_default_logger()
+
+PYTHON_EXE = os.environ.get("PYTHON_EXE")
+if PYTHON_EXE is None:
+    raise SystemExit("PYTHON_EXE environment variable is not set.")
 
 # Maximum number of structures per job
 # Each request to Triton server takes at most 1024 structures.
@@ -43,7 +46,7 @@ SLURM_CMD = """#!/bin/bash
 # set environment variable for inference URL
 export INFERENCE_URL=http://localhost:8000/v1/infer
 
-srun /mnt/filesystem/dev_renkeh/mqc-env/bin/python << EOF
+srun {PYTHON_EXE} << EOF
 import pickle
 from mqc_pipeline.workflow.io import get_sts_from_file
 from mqc_pipeline.workflow.triton_pipeline import run_pipeline
@@ -207,6 +210,7 @@ def _submit_job(batch_dir: str, node_name: str, cached_config: str,
         JOB_NAME=node_name.lstrip('fs-sn-'),
         JOB_LOG=job_log_path,
         NODE_NAME=node_name,
+        PYTHON_EXE=str(PYTHON_EXE),
         CACHED_CONFIG=str(cached_config),
         INFILE=str(infile),
         START_IDX=start_idx,
