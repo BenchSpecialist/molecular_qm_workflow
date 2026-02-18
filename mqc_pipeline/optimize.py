@@ -13,19 +13,17 @@ from ase.optimize import BFGS, FIRE
 from pyscf.geomopt import geometric_solver
 
 from .common import Structure, setup_mean_field_obj, COORDINATE_UNIT
-from .constants import EV_TO_HARTREE
 from .property.keys import DFT_ENERGY_KEY, DFT_FORCES_KEY
 from .settings import ASEOption, PySCFOption, METHOD_AIMNet2
 
 OPTIMIZER_NAME_TO_CLASS = {'BFGS': BFGS, 'FIRE': FIRE}
 
-_AIMNET2_MODEL_PATH = Path(
-    "/mnt/filesystem/dev_renkeh/aimnet-model-zoo/aimnet2"
-) / "aimnet2_wb97m_0.jpt"
+_DEFAULT_AIMNET2_MODEL_PATH = Path(
+    __file__).parent / "models" / "aimnet2_wb97m_0.jpt"
 
 
 @lru_cache(maxsize=1)
-def _get_aimnet2calc_local_pt():
+def _get_aimnet2calc_local_pt(model_path: str):
     """
     Load the local AIMNet2 model checkpoint once and cache it for subsequent calls.
     """
@@ -36,8 +34,8 @@ def _get_aimnet2calc_local_pt():
         logger.error(err_msg)
         raise ImportError(err_msg)
 
-    logger.info(f'Loading AIMNet2 model from {_AIMNET2_MODEL_PATH}')
-    return AIMNet2Calculator(str(_AIMNET2_MODEL_PATH))
+    logger.info(f'Loading AIMNet2 model from {model_path}')
+    return AIMNet2Calculator(model_path)
 
 
 @lru_cache(maxsize=1)
@@ -60,7 +58,9 @@ def _runs_with_slurm() -> bool:
     return any(var in os.environ for var in slurm_vars)
 
 
-def optimize_by_aimnet2(st: Structure, options: ASEOption) -> Structure:
+def optimize_by_aimnet2(st: Structure,
+                        options: ASEOption,
+                        model_path: Path | None = None) -> Structure:
     """
     Optimize the geometry of a molecule using AIMNet2 calculator from ASE backend.
     Note that the function modifies the input Structure object in-place.
@@ -68,29 +68,23 @@ def optimize_by_aimnet2(st: Structure, options: ASEOption) -> Structure:
     :param st: Structure object containing the molecule information.
     :param options: ASEOption object containing optimization parameters.
     """
-    from requests.exceptions import HTTPError
-
     AIMNet2ASE = _import_aimnet2ase()
+
+    model_path = model_path or _DEFAULT_AIMNET2_MODEL_PATH
+    model_path = str(model_path)
 
     t_start = time.perf_counter()
     ase_atoms = st.to_ase_atoms()
 
-    # Use local model when running under SLURM to avoid network issues
-    if _runs_with_slurm():
-        ase_atoms.calc = AIMNet2ASE(base_calc=_get_aimnet2calc_local_pt(),
-                                    charge=st.charge,
-                                    mult=st.multiplicity)
-    else:
-        # Try online model first, fallback to local if it fails
-        try:
-            ase_atoms.calc = AIMNet2ASE(base_calc=METHOD_AIMNet2,
-                                        charge=st.charge,
-                                        mult=st.multiplicity)
-        except (HTTPError, Exception) as e:
-            logger.warning(f"Failed to load remote AIMNet2 model: {str(e)}")
-            ase_atoms.calc = AIMNet2ASE(base_calc=_get_aimnet2calc_local_pt(),
-                                        charge=st.charge,
-                                        mult=st.multiplicity)
+    ase_atoms.calc = AIMNet2ASE(
+        base_calc=_get_aimnet2calc_local_pt(model_path),
+        charge=st.charge,
+        mult=st.multiplicity)
+
+    # # Try fetching online checkpoint
+    # ase_atoms.calc = AIMNet2ASE(base_calc=METHOD_AIMNet2,
+    #                                     charge=st.charge,
+    #                                     mult=st.multiplicity)
 
     # Set algorithm/optimizer used for geometry optimization
     if options.optimizer_name not in OPTIMIZER_NAME_TO_CLASS:
@@ -116,8 +110,8 @@ def optimize_by_aimnet2(st: Structure, options: ASEOption) -> Structure:
     st.xyz = ase_atoms.get_positions()
 
     # Save the AIMNet2 energy and forces of the optimized geometry
-    st.property[f"{METHOD_AIMNet2}_energy_hartree"] = float(
-        ase_atoms.get_potential_energy()) * EV_TO_HARTREE
+    st.property[f"{METHOD_AIMNet2}_energy_ev"] = float(
+        ase_atoms.get_potential_energy())
     st.save_gradients(ase_atoms.get_forces(),
                       prop_key=f"{METHOD_AIMNet2}_forces")
 
