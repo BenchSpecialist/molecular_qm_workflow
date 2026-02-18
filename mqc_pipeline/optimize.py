@@ -2,19 +2,16 @@ import os
 import time
 from pathlib import Path
 from functools import lru_cache
-
-from .util import get_default_logger
-
-logger = get_default_logger()
-# Imports for ASE backend
 from ase.optimize import BFGS, FIRE
-
-# Imports for pyscf backend
+from aimnet2calc.aimnet2ase import AIMNet2ASE
 from pyscf.geomopt import geometric_solver
 
 from .common import Structure, setup_mean_field_obj, COORDINATE_UNIT
 from .property.keys import DFT_ENERGY_KEY, DFT_FORCES_KEY
 from .settings import ASEOption, PySCFOption, METHOD_AIMNet2
+from .util import get_default_logger
+
+logger = get_default_logger()
 
 OPTIMIZER_NAME_TO_CLASS = {'BFGS': BFGS, 'FIRE': FIRE}
 
@@ -23,7 +20,7 @@ _DEFAULT_AIMNET2_MODEL_PATH = Path(
 
 
 @lru_cache(maxsize=1)
-def _get_aimnet2calc_local_pt(model_path: str):
+def _get_aimnet2calc(model_path: Path | str):
     """
     Load the local AIMNet2 model checkpoint once and cache it for subsequent calls.
     """
@@ -35,27 +32,15 @@ def _get_aimnet2calc_local_pt(model_path: str):
         raise ImportError(err_msg)
 
     logger.info(f'Loading AIMNet2 model from {model_path}')
-    return AIMNet2Calculator(model_path)
+    return AIMNet2Calculator(str(model_path))
 
 
-@lru_cache(maxsize=1)
-def _import_aimnet2ase():
-    """Import and return AIMNet2ASE with caching."""
-    try:
-        from aimnet2calc.aimnet2ase import AIMNet2ASE
-        return AIMNet2ASE
-    except Exception as e:
-        err_msg = f"Cannot import aimnet2calc.AIMNet2ASE: {str(e)}"
-        logger.error(err_msg)
-        raise ImportError(err_msg)
-
-
-def _runs_with_slurm() -> bool:
-    """
-    Check if the current Python process is running under SLURM orchestration.
-    """
-    slurm_vars = ['SLURM_JOB_ID', 'SLURM_PROCID', 'SLURM_LOCALID']
-    return any(var in os.environ for var in slurm_vars)
+# def _runs_with_slurm() -> bool:
+#     """
+#     Check if the current Python process is running under SLURM orchestration.
+#     """
+#     slurm_vars = ['SLURM_JOB_ID', 'SLURM_PROCID', 'SLURM_LOCALID']
+#     return any(var in os.environ for var in slurm_vars)
 
 
 def optimize_by_aimnet2(st: Structure,
@@ -68,8 +53,6 @@ def optimize_by_aimnet2(st: Structure,
     :param st: Structure object containing the molecule information.
     :param options: ASEOption object containing optimization parameters.
     """
-    AIMNet2ASE = _import_aimnet2ase()
-
     model_path = model_path or _DEFAULT_AIMNET2_MODEL_PATH
     model_path = str(model_path)
 
@@ -77,14 +60,10 @@ def optimize_by_aimnet2(st: Structure,
     ase_atoms = st.to_ase_atoms()
 
     ase_atoms.calc = AIMNet2ASE(
-        base_calc=_get_aimnet2calc_local_pt(model_path),
+        base_calc=_get_aimnet2calc(
+            model_path),  # base_calc='AIMNET2' fetch online model
         charge=st.charge,
         mult=st.multiplicity)
-
-    # # Try fetching online checkpoint
-    # ase_atoms.calc = AIMNet2ASE(base_calc=METHOD_AIMNet2,
-    #                                     charge=st.charge,
-    #                                     mult=st.multiplicity)
 
     # Set algorithm/optimizer used for geometry optimization
     if options.optimizer_name not in OPTIMIZER_NAME_TO_CLASS:
