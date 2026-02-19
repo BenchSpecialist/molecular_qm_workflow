@@ -4,7 +4,11 @@ from functools import lru_cache
 from ase.optimize import BFGS, FIRE
 from pyscf.geomopt import geometric_solver
 
-from .aimnet2calc.aimnet2ase import AIMNet2ASE
+try:
+    from .aimnet2calc.aimnet2ase import AIMNet2ASE
+except Exception as e:
+    AIMNet2ASE = None
+
 from .common import Structure, setup_mean_field_obj, COORDINATE_UNIT
 from .property.keys import DFT_ENERGY_KEY, DFT_FORCES_KEY
 from .settings import ASEOption, PySCFOption, METHOD_AIMNet2
@@ -57,6 +61,11 @@ def optimize_by_aimnet2(st: Structure,
 
     t_start = time.perf_counter()
     ase_atoms = st.to_ase_atoms()
+
+    if AIMNet2ASE is None:
+        raise ImportError(
+            "AIMNet2ASE is not available. Check if aimnet2calc package is installed."
+        )
 
     ase_atoms.calc = AIMNet2ASE(
         base_calc=_get_aimnet2calc(
