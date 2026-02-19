@@ -512,3 +512,21 @@ class PipelineSettings(BaseSettings):
             raise ValidationError(
                 f"Input file or directory does not exist: {input_file_or_dir}")
         return str(input_file_or_dir)
+
+
+class ContainerPipelineSettings(BaseSettings):
+    """
+    Container-friendly pipeline settings for Docker/Kubernetes execution.
+    """
+    # Override output settings with container-friendly defaults
+    output_dir: str = Field(
+        default="/data/output",
+        description="Directory to save the output files.\n"
+        "# Default to /data/output for standard container volume mount.")
+
+    output_file_format: Literal["csv", "parquet", "parq"] = Field(
+        default="parquet",
+        description=
+        "Columnar file format to write molecule-level and atom-level properties for all input molecules.\n"
+        f"# Supported formats: {', '.join(SUPPORTED_COLUMNAR_FILE_FORMATS)}. "
+        "# Default is parquet for better performance with large batches.")
