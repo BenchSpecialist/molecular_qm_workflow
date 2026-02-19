@@ -28,7 +28,7 @@ jobs:
       # Step 3: Install the package in editable mode (.) along with test dependencies
       # defined in pyproject.toml
       - name: Install dependencies
-        run: pip install .[cpu_test]
+        run: pip install -r requirements.txt
 
       # Step 4: Run tests
       - name: Run pytest
