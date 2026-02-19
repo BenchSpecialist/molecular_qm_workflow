@@ -1,10 +1,13 @@
-import os
 import time
 from pathlib import Path
 from functools import lru_cache
 from ase.optimize import BFGS, FIRE
-from aimnet2calc.aimnet2ase import AIMNet2ASE
 from pyscf.geomopt import geometric_solver
+
+try:
+    from .aimnet2calc.aimnet2ase import AIMNet2ASE
+except Exception as e:
+    AIMNet2ASE = None
 
 from .common import Structure, setup_mean_field_obj, COORDINATE_UNIT
 from .property.keys import DFT_ENERGY_KEY, DFT_FORCES_KEY
@@ -25,7 +28,7 @@ def _get_aimnet2calc(model_path: Path | str):
     Load the local AIMNet2 model checkpoint once and cache it for subsequent calls.
     """
     try:
-        from aimnet2calc.calculator import AIMNet2Calculator
+        from .aimnet2calc.calculator import AIMNet2Calculator
     except Exception as e:
         err_msg = f"Cannot import aimnet2calc.AIMNet2Calculator: {str(e)}"
         logger.error(err_msg)
@@ -58,6 +61,11 @@ def optimize_by_aimnet2(st: Structure,
 
     t_start = time.perf_counter()
     ase_atoms = st.to_ase_atoms()
+
+    if AIMNet2ASE is None:
+        raise ImportError(
+            "AIMNet2ASE is not available. Check if aimnet2calc package is installed."
+        )
 
     ase_atoms.calc = AIMNet2ASE(
         base_calc=_get_aimnet2calc(

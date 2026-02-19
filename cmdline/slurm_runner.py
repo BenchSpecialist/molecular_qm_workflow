@@ -291,7 +291,7 @@ def main():
         raise SystemExit("No configuration file provided.")
 
     try:
-        settings = PipelineSettings.from_yaml(args.config)
+        settings = PipelineSettings.from_file(args.config)
     except Exception as e:
         print(str(e))
         raise SystemExit(1)

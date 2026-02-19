@@ -118,7 +118,7 @@ def test_to_pyscf_options(tmp_cwd):
     assert pyscf_options.solvent_eps == 78.36
 
 
-def test_from_yaml(tmp_cwd):
+def test_from_file(tmp_cwd):
     """Test creating a PipelineSettings instance from a YAML file."""
     # Create a temporary YAML file with custom settings
     Path("input.txt").write_text("C\n")
@@ -132,7 +132,7 @@ def test_from_yaml(tmp_cwd):
         yaml.dump(custom_config, f)
 
     # Create PipelineSettings instance from the YAML file
-    config = PipelineSettings.from_yaml(temp_yaml_file)
+    config = PipelineSettings.from_file(temp_yaml_file)
 
     # Assert that the loaded config matches the custom settings
     assert config.ase_optimizer_name == FIRE_OPTIMIZER
