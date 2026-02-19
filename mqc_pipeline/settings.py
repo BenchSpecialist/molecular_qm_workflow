@@ -145,35 +145,46 @@ class ESPGridsOption:
     probe_depth: float = 1.1
 
 
-class PipelineSettings(BaseModel):
+class BaseSettings(BaseModel):
     """
-    Frontend schema for the pipeline settings.
-
-    Example usage:
-    >>> user_dict = {"input_file_or_dir": "smiles.txt"}
-    >>> config = PipelineSettings(**user_dict)
-    >>> config_dict = config.model_dump() # Convert to a dictionary
+    Base class for pipeline settings with common fields and methods.
     """
-    # Input and job settings
+    # Input settings
     input_file_or_dir: str = Field(
         description="Path to a txt/csv/pkl file that contains smiles strings.\n"
         "# Alternatively, a directory containing multiple xyz files.")
 
     pickled_input_type: str | None = Field(
         default="smiles",
-        description="Type of inputs if a pkl file is given.\n"
+        description=
+        "Type of inputs if a pkl file is given in `input_file_or_dir`.\n"
         f"# Supported types: {', '.join(SUPPORTED_PICKLE_INPUT_TYPES)}.")
 
-    num_jobs: int = Field(
-        default=1,
-        ge=0,
-        description="Number of SLURM batch jobs to launch.\n"
-        "# If set to 0, the pipeline will run locally without SLURM orchestration."
-    )
+    # Output settings
+    output_dir: str = Field(description="Directory to save the output files.")
 
-    job_name: str = Field(
-        default="mqc_pipeline",
-        description="Name of the SLURM job. Only relevant when num_jobs > 0.")
+    output_file_format: Literal["csv", "parquet", "parq"] = Field(
+        default="csv",
+        description=
+        "Columnar file format to write molecule-level and atom-level properties for all input molecules.\n"
+        f"# Supported formats: {', '.join(SUPPORTED_COLUMNAR_FILE_FORMATS)}.")
+
+    write_json: bool = Field(
+        default=False,
+        description="Whether to write single-molecule result to JSON file.")
+
+    progress_log_interval: int = Field(
+        default=10,
+        description="Interval for logging progress during batch processing.")
+
+    # Property calculation settings
+    additional_properties: set[str] = Field(
+        default=AdditionalProperty._default_props_solvent(),
+        max_length=len(SUPPORTED_ADDITIONAL_PROPS),
+        description="Additional DFT properties to compute.\n"
+        f"# Supported properties: {', '.join(SUPPORTED_ADDITIONAL_PROPS)}\n"
+        f"# Total electronic energy, HOMO/LUMO, dipole moment are always returned."
+    )
 
     # Calculation parameters
     smiles_to_3d_method: str = Field(
@@ -240,36 +251,6 @@ class PipelineSettings(BaseModel):
     esp_probe_depth: float = Field(
         default=1.1,
         description="Probe depth for ESP calculations in angstrom")
-
-    # Property calculation settings
-    additional_properties: set[str] = Field(
-        default=AdditionalProperty._default_props_solvent(),
-        max_length=len(SUPPORTED_ADDITIONAL_PROPS),
-        description="Additional DFT properties to compute.\n"
-        f"# Supported properties: {', '.join(SUPPORTED_ADDITIONAL_PROPS)}\n"
-        f"# Total electronic energy, HOMO/LUMO, dipole moment are always returned."
-    )
-
-    # Output settings
-    output_dir: str = Field(
-        default=Path.cwd().resolve(),
-        description="Directory to save the output files.\n"
-        "# Default to the current working directory where the cmdline unitlity is called."
-    )
-
-    output_file_format: Literal["csv", "parquet", "parq"] = Field(
-        default="csv",
-        description=
-        "Columnar file format to write molecule-level and atom-level properties for all input molecules.\n"
-        f"# Supported formats: {', '.join(SUPPORTED_COLUMNAR_FILE_FORMATS)}.")
-
-    write_json: bool = Field(
-        default=False,
-        description="Whether to write single-molecule result to JSON file.")
-
-    progress_log_interval: int = Field(
-        default=10,
-        description="Interval for logging progress during batch processing.")
 
     def get_property_kwargs(self) -> dict[str, bool]:
         """
@@ -351,43 +332,19 @@ class PipelineSettings(BaseModel):
 
         return "\n".join(yaml_lines)
 
-    def to_recreate_string(self) -> str:
-        """
-        Return a string that can be copied and pasted to recreate this model.
-        The returned string is valid Python code that can be executed to create
-        an identical instance of the model.
-        """
-        lines = ["PipelineSettings("]
-        for key, value in self.model_dump().items():
-            lines.append(f"    {key}={repr(value)},")
-        lines.append(")")
-
-        return "\n".join(lines)
-
     @classmethod
-    def from_yaml(cls, yaml_path: str | Path) -> "PipelineSettings":
+    def from_yaml(cls, yaml_path: str | Path) -> "BaseSettings":
         """
-        Create a PipelineSettings instance from a YAML file.
+        Create a BaseSettings instance from a YAML file.
 
         :param yaml_path: Path to the YAML configuration file.
-        :return: A PipelineSettings instance.
+        :return: A BaseSettings instance.
         """
         yaml_path = Path(yaml_path)
         with open(yaml_path, "r") as fhandle:
             config_dict = yaml.safe_load(fhandle)
         # Validate and parse using the Pydantic model
         return cls(**config_dict)
-
-    @field_validator('input_file_or_dir')
-    def validate_input_existence(cls, input_file_or_dir: str) -> str:
-        # Note that `mqc_pipeline.validate.validate_input` function provides more
-        # detailed validation for the input file or directory.
-        # The logic is separeted to make the current model more flexible in setting
-        # up batching jobs.
-        if not Path(input_file_or_dir).exists():
-            raise ValidationError(
-                f"Input file or directory does not exist: {input_file_or_dir}")
-        return str(input_file_or_dir)
 
     @field_validator('pickled_input_type')
     def validate_pickled_input_type(cls, pickled_input_type: str) -> str:
@@ -427,7 +384,7 @@ class PipelineSettings(BaseModel):
         return method
 
     @model_validator(mode='after')
-    def validate_geometry_opt_with_input(self) -> 'PipelineSettings':
+    def validate_geometry_opt_with_input(self) -> 'BaseSettings':
         """
         Cross-field validation for geometry optimization method and input type.
         """
@@ -495,3 +452,51 @@ class PipelineSettings(BaseModel):
         raise ValidationError(
             f"pyscf_solvent must be either a boolean or a tuple of (method: str, epsilon: float), "
             f"got {type(value).__name__}: {value}")
+
+
+class PipelineSettings(BaseSettings):
+    """
+    Pipeline settings with SLURM-specific fields for batch job management.
+
+    This class inherits from BaseSettings and adds SLURM job orchestration fields.
+    It includes strict input file validation and defaults suitable for local/SLURM execution.
+
+    Key additions over BaseSettings:
+    - SLURM job management (num_jobs, job_name)
+    - Strict input file existence validation
+    - Default output to current working directory with CSV format
+
+    Example usage:
+    >>> user_dict = {"input_file_or_dir": "smiles.txt"}
+    >>> config = PipelineSettings(**user_dict)
+    >>> config_dict = config.model_dump() # Convert to a dictionary
+    """
+    # SLURM job settings
+    num_jobs: int = Field(
+        default=1,
+        ge=0,
+        description="Number of SLURM batch jobs to launch.\n"
+        "# If set to 0, the pipeline will run locally without SLURM orchestration."
+    )
+
+    job_name: str = Field(
+        default="mqc_pipeline",
+        description="Name of the SLURM job. Only relevant when num_jobs > 0.")
+
+    # Override output settings with PipelineSettings defaults
+    output_dir: str = Field(
+        default=Path.cwd().resolve(),
+        description="Directory to save the output files.\n"
+        "# Default to the current working directory where the cmdline unitlity is called."
+    )
+
+    @field_validator('input_file_or_dir')
+    def validate_input_existence(cls, input_file_or_dir: str) -> str:
+        # Note that `mqc_pipeline.validate.validate_input` function provides more
+        # detailed validation for the input file or directory.
+        # The logic is separeted to make the current model more flexible in setting
+        # up batching jobs.
+        if not Path(input_file_or_dir).exists():
+            raise ValidationError(
+                f"Input file or directory does not exist: {input_file_or_dir}")
+        return str(input_file_or_dir)

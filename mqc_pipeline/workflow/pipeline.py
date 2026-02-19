@@ -6,7 +6,7 @@ from functools import partial
 
 from rdkit import Chem
 
-from ..settings import PipelineSettings, METHOD_AIMNet2, METHOD_DFT
+from ..settings import BaseSettings, METHOD_AIMNet2, METHOD_DFT
 from ..common import Structure
 from ..smiles_util import smiles_to_structure
 from .. import optimize
@@ -101,8 +101,7 @@ def run_one_molecule(smiles_or_st: str | Structure,
     return st
 
 
-def run_one_batch(inputs: list[str] | list[Structure],
-                  settings: PipelineSettings):
+def run_one_batch(inputs: list[str] | list[Structure], settings: BaseSettings):
     """
     Run pipeline for a batch of molecules; they are intended to run in serial
     on a single GPU.
@@ -206,7 +205,7 @@ def run_one_batch(inputs: list[str] | list[Structure],
     )
 
 
-def run_from_config_settings(settings: PipelineSettings) -> None:
+def run_from_config_settings(settings: BaseSettings) -> None:
     # Read input from config
     input_path = Path(settings.input_file_or_dir)
     if input_path.is_file():
