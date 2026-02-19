@@ -189,9 +189,9 @@ def get_esp(pyscf_mol, one_rdm: np.ndarray, **kwargs) -> tuple:
     """
     cupy, _CUPY_AVAILABLE = import_cupy()
     if not _CUPY_AVAILABLE:
-        raise RuntimeError(
-            "get_esp_range: Required CuPy package not available.")
-    int3c1e = import_int3c1e()
+        logger.warning(
+            "No CuPy acceleration available. ESP calculation will run on CPU.")
+
     if 'grids' not in kwargs:
         grids = generate_esp_grids(pyscf_mol,
                                    rcut=kwargs.get('rcut',
@@ -199,30 +199,42 @@ def get_esp(pyscf_mol, one_rdm: np.ndarray, **kwargs) -> tuple:
                                    space=kwargs.get('space', GRID_SPACING),
                                    solvent_probe=kwargs.get(
                                        'solvent_probe', SOLVENT_PROBE))
-    # Calculate electronic contribution to ESP at grid points
-    # This integral represents the Coulomb potential from the electron density
-    # v_grids_e = ∫ ρ(r')/|r-r'| dr', where ρ is the electron density
-    v_grids_e = int3c1e.int1e_grids(pyscf_mol, grids, dm=one_rdm)
+
+    v_grids_e = np.einsum('pij,ij->p',
+                          pyscf_mol.intor('int1e_grids', grids=grids), one_rdm)
+    qm_xyz = pyscf_mol.atom_coords()
+    qm_charges = pyscf_mol.atom_charges()
 
     # Move calculations to GPU for better performance
-    qm_xyz = cupy.array(pyscf_mol.atom_coords())
-    qm_charges = cupy.array(pyscf_mol.atom_charges())
-    grids_cu = cupy.array(grids)
+    if _CUPY_AVAILABLE:
+        int3c1e = import_int3c1e()
+        # Calculate electronic contribution to ESP at grid points
+        # This integral represents the Coulomb potential from the electron density
+        # v_grids_e = ∫ ρ(r')/|r-r'| dr', where ρ is the electron density
+        v_grids_e = int3c1e.int1e_grids(pyscf_mol, grids, dm=one_rdm)
 
-    # Calculate distances between each nucleus and each grid point
-    drg = qm_xyz[:, None, :] - grids_cu  # (Natom, Ngrid, 3)
-    dr = cupy.linalg.norm(drg, axis=2)  # (Natom, Ngrid)
+        qm_xyz, qm_charges, grids_cu = cupy.array(qm_xyz), cupy.array(
+            qm_charges), cupy.array(grids)
 
-    # Calculate nuclear contribution to ESP
-    # The ESP from nuclei is given by: Σ(Z_A/|r-R_A|) for all atoms A
-    # where Z_A is the nuclear charge and R_A is the nuclear position
-    z_val = cupy.einsum('ig, i->g', 1.0 / dr, qm_charges)
+        # Calculate distances between each nucleus and each grid point
+        drg = qm_xyz[:, None, :] - grids_cu  # (Natom, Ngrid, 3)
+        dr = cupy.linalg.norm(drg, axis=2)  # (Natom, Ngrid)
 
-    # Combine nuclear and electronic contributions to get total ESP
-    # and convert back to CPU memory (numpy array)
-    # Electronic contribution has opposite sign (negative charges)
-    # Total ESP = nuclear contribution - electronic contribution
-    esp_vals = cupy.asnumpy(z_val - v_grids_e)
+        # Calculate nuclear contribution to ESP
+        # The ESP from nuclei is given by: Σ(Z_A/|r-R_A|) for all atoms A
+        # where Z_A is the nuclear charge and R_A is the nuclear position
+        z_val = cupy.einsum('ig, i->g', 1.0 / dr, qm_charges)
+
+        # Combine nuclear and electronic contributions to get total ESP
+        # and convert back to CPU memory (numpy array)
+        # Electronic contribution has opposite sign (negative charges)
+        # Total ESP = nuclear contribution - electronic contribution
+        esp_vals = cupy.asnumpy(z_val - v_grids_e)
+    else:
+        # Run on CPU
+        dr = np.linalg.norm(qm_xyz[:, None, :] - grids, axis=2)
+        esp_vals = np.einsum('ig, i->g', 1.0 / dr, qm_charges) - v_grids_e
+
     if pyscf_mol.charge < 0:
         # For anions, also identify potential binding sites for Li+
         return get_esp_range_and_binding_site(pyscf_mol, grids, esp_vals)
