@@ -1,4 +1,5 @@
 import yaml
+import json
 from enum import Enum
 from pathlib import Path
 from typing import Literal
@@ -333,16 +334,27 @@ class BaseSettings(BaseModel):
         return "\n".join(yaml_lines)
 
     @classmethod
-    def from_yaml(cls, yaml_path: str | Path) -> "BaseSettings":
+    def from_file(cls, file_path: str | Path) -> "BaseSettings":
         """
-        Create a BaseSettings instance from a YAML file.
+        Create a BaseSettings instance from a configuration file.
 
-        :param yaml_path: Path to the YAML configuration file.
+        :param file_path: Path to the YAML or JSON file.
         :return: A BaseSettings instance.
         """
-        yaml_path = Path(yaml_path)
-        with open(yaml_path, "r") as fhandle:
-            config_dict = yaml.safe_load(fhandle)
+        file_path = Path(file_path)
+        # Normalize suffix
+        suffix = file_path.suffix.lower()
+
+        if suffix in ('.yaml', '.yml'):
+            with open(file_path, "r", encoding='utf-8') as fhandle:
+                config_dict = yaml.safe_load(fhandle)
+        elif suffix == '.json':
+            with open(file_path, "r", encoding='utf-8') as fhandle:
+                config_dict = json.load(fhandle)
+        else:
+            raise ValidationError(
+                f"Unsupported file format: {file_path.suffix or '(no extension)'}. "
+                f"Only .yaml, .yml, and .json files are supported.")
         # Validate and parse using the Pydantic model
         return cls(**config_dict)
 
