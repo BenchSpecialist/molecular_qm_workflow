@@ -15,7 +15,7 @@ pyscf>=2.11.0
 geometric>=0.9.7  # Required for PySCF geometry optimization (pyscf.geomopt.geometric_solver)
 
 # Atomic Simulation Environment (for AIMNet2 geometry optimization)
-ase>=3.25.0
+ase==3.25.0
 
 # PyTorch (for AIMNet2 model inference - works on both CPU and GPU)
 torch>=2.4.0,<3.0  # aimnet2calc requires torch<3

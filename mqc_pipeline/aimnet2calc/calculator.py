@@ -1,9 +1,9 @@
 import torch
 from torch import nn, Tensor
 from typing import Union, Dict, Any
-from aimnet2calc.nblist import nblist_torch_cluster, nblists_torch_pbc
-from aimnet2calc.models import get_model_path
 
+from .nblist import nblist_torch_cluster, nblists_torch_pbc
+from .models import get_model_path
 
 class AIMNet2Calculator:
     """ Genegic AIMNet2 calculator 
