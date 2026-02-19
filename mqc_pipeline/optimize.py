@@ -2,9 +2,9 @@ import time
 from pathlib import Path
 from functools import lru_cache
 from ase.optimize import BFGS, FIRE
-from aimnet2calc.aimnet2ase import AIMNet2ASE
 from pyscf.geomopt import geometric_solver
 
+from .aimnet2calc.aimnet2ase import AIMNet2ASE
 from .common import Structure, setup_mean_field_obj, COORDINATE_UNIT
 from .property.keys import DFT_ENERGY_KEY, DFT_FORCES_KEY
 from .settings import ASEOption, PySCFOption, METHOD_AIMNet2
@@ -24,7 +24,7 @@ def _get_aimnet2calc(model_path: Path | str):
     Load the local AIMNet2 model checkpoint once and cache it for subsequent calls.
     """
     try:
-        from aimnet2calc.calculator import AIMNet2Calculator
+        from .aimnet2calc.calculator import AIMNet2Calculator
     except Exception as e:
         err_msg = f"Cannot import aimnet2calc.AIMNet2Calculator: {str(e)}"
         logger.error(err_msg)

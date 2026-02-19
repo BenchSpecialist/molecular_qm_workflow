@@ -1,7 +1,7 @@
 .PHONY: all clean build install install-dev test
 
 # Default Python executable
-PYTHON := python3
+PYTHON := python
 
 all: install
 
