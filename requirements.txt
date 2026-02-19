@@ -1,0 +1,59 @@
+# Core scientific computing
+numpy>=1.26.4
+scipy>=1.6.0
+
+# Data processing (CSV/Parquet I/O)
+polars>=1.30.0
+pyarrow>=16.1.0
+
+# Chemistry libraries
+rdkit>=2024.09.6
+openbabel-wheel>=3.1.1.22
+
+# Quantum chemistry
+pyscf>=2.11.0
+geometric>=0.9.7  # Required for PySCF geometry optimization (pyscf.geomopt.geometric_solver)
+
+# Atomic Simulation Environment (for AIMNet2 geometry optimization)
+ase>=3.25.0
+
+# PyTorch (for AIMNet2 model inference - works on both CPU and GPU)
+torch>=2.4.0,<3.0  # aimnet2calc requires torch<3
+# Note: For GPU support, install torch with CUDA support:
+# pip install torch --index-url https://download.pytorch.org/whl/cu124
+
+# AIMNet2 dependencies (required for aimnet2calc package)
+torch-cluster>=1.6.0  # Required for neighbor list calculations in AIMNet2
+numba>=0.56.0  # Required for optimized neighbor list calculations
+requests>=2.25.0  # Required for downloading AIMNet2 models from model zoo
+
+# Machine learning utilities
+scikit-learn>=1.0.0
+
+# Configuration and validation
+pydantic>=1.10.0
+pyyaml>=6.0.0
+
+# Logging
+loguru>=0.7.0
+
+# File locking (for AIMNet2 model loading)
+filelock>=3.0.0
+
+# Template engine (for AIMNet2 config)
+jinja2>=3.0.0
+
+# Utilities
+tabulate>=0.9.0
+more-itertools>=8.0.0
+
+# Optional GPU acceleration packages (install if GPU is available)
+# Uncomment the following lines for GPU support:
+# cupy-cuda12x>=13.6.0
+# cutensor-cu12>=2.4.1
+# gpu4pyscf-cuda12x>=1.5.0
+
+# Note: aimnet2calc source code is included in mqc_pipeline/aimnet2calc/
+# The package is automatically available when mqc_pipeline is installed.
+# If importing aimnet2calc directly fails, ensure the mqc_pipeline package
+# structure is properly set up.
