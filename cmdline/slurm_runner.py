@@ -1,5 +1,9 @@
 """
-Commandline API to run the molecular geometry optimization and property calculation pipeline.
+Commandline utility to run the molecular geometry optimization and property calculation pipeline.
+
+This script is specifically designed for processing batches of molecules and
+running on SLURM HPC clusters. It automatically distributes input molecules
+across multiple SLURM jobs for parallel batch processing.
 
 Configure environment variables to allow this script to be executed from any location.
 ```
@@ -9,13 +13,13 @@ export PYTHONPATH="/path/to/mqc_pipeline:$PYTHONPATH"
 
 Usage:
 - Generate a default configuration file:
-    $ python mqc_runner.py --write-default-config <config.yaml>
+    $ python slurm_runner.py --write-default-config <config.yaml>
 
 - Run the pipeline with a configuration file:
-    $ python mqc_runner.py --config <config.yaml>
+    $ python slurm_runner.py --config <config.yaml>
 
 - Batch inputs and write out SLURM scripts, but NOT submit for debugging:
-    $ python mqc_runner.py --config <config.yaml> --dry-run
+    $ python slurm_runner.py --config <config.yaml> --dry-run
 """
 import os
 import shutil

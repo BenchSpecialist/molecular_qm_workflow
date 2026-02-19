@@ -3,6 +3,10 @@ Cmdline utility that takes SMILES strings as input, run batched molecular geomet
 optimization using AIMNET2 via Triton inference server, and subsequent property
 calculations using extended AIMNET2 model or DFT.
 
+This script is designed for processing batches of molecules and
+running on SLURM HPC clusters. It automatically distributes input molecules
+across multiple SLURM jobs and Triton server nodes for parallel batch processing.
+
 Configure environment variables to allow this script to be executed from any location.
 ```
 export PATH="/path/to/mqc_pipeline/cmdline:$PATH"
@@ -11,21 +15,21 @@ export PYTHONPATH="/path/to/mqc_pipeline:$PYTHONPATH"
 
 Please follow these steps strictly to run the Triton pipeline:
 1. Generate `ACTIVE_TRITON_NODES.txt` file that contains available Triton server nodes by:
-    $ triton_runner.py --get-active-triton-nodes
+    $ python triton_runner.py --get-active-triton-nodes
 
 2. Estimate your workload and request the total number of Triton server nodes to run:
-    $ triton_runner.py --request-num-server-nodes <num_active_nodes>
+    $ python triton_runner.py --request-num-server-nodes <num_active_nodes>
    Please wait for at least 2 minutes for all servers to start.
 
 3. Generate a default configuration file:
-    $ triton_runner.py --write-default-config <config.yaml>
+    $ python triton_runner.py --write-default-config <config.yaml>
 
 4. Run the pipeline with the configuration file:
-    $ triton_runner.py --config <config.yaml>
+    $ python triton_runner.py --config <config.yaml>
 
 Other options:
 - To set Triton servers on specific node IDs:
-    $ triton_runner.py --set-server-on-node-ids 1,2,63,64
+    $ python triton_runner.py --set-server-on-node-ids 1,2,63,64
 """
 import os
 import pickle

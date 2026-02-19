@@ -1,10 +1,13 @@
+This repository provides tools to run high-throughput molecular quantum chemical property calculations.
+
 ## Command-line interface
 
-Two command-line entrypoints for different computational approaches are provided. Both interfaces follow similar usage patterns with configuration YAML files and command-line arguments tailored to their respective computational backends.
+Two command-line entrypoints for different computational approaches are provided.
+Both interfaces follow similar usage patterns with configuration YAML files and command-line arguments tailored to their respective computational backends.
 
-### 1. `mqc_runner.py` - DFT-based workflow
+### 1. `slurm_runner.py` - DFT-based workflow
 
-The [`mqc_runner.py`](cmdline/mqc_runner.py) interface provides an end-to-end solution for high-throughput molecular geometry optimization via GPU-accelerated DFT or machine learning potential (AIMNet2) via ASE interface, and subsequent property calculations using DFT. It automatically:
+The [`slurm_runner.py`](cmdline/slurm_runner.py) interface provides an end-to-end solution for high-throughput molecular geometry optimization via GPU-accelerated DFT or machine learning potential (AIMNet2) via ASE interface, and subsequent property calculations using DFT. It automatically:
 
 - **Batches** input molecules based on configuration settings
 - **Launches** parallelized jobs to the SLURM-managed GPU cluster
@@ -53,8 +56,8 @@ triton_runner.py --config <config.yaml>
 
 To get started, test the installation of the command-line utility by running:
 ```
-$ mqc_runner.py --help
-usage: mqc_runner.py [-h] [--config YAML_FILE] [--write-default-config YAML_FILE] [--dry-run] [--combine-results] [--cleanup] [--extract-xyz XYZ_DIR]
+$ slurm_runner.py --help
+usage: slurm_runner.py [-h] [--config YAML_FILE] [--write-default-config YAML_FILE] [--dry-run] [--combine-results] [--cleanup] [--extract-xyz XYZ_DIR]
 
 Cmdline utility to run molecular geometry optimization and property calculation pipeline.
 
@@ -77,7 +80,7 @@ options:
 For first-time users, generate a default configuration file with all available options:
 
 ```bash
-$ mqc_runner.py --write-default-config config.yaml
+$ slurm_runner.py --write-default-config config.yaml
 ```
 
 The generated configuration file contains the following structure and default values:
@@ -155,7 +158,7 @@ The minimal requirement for config is specifying the input file path via the inp
 
 Once your configuration file is properly set up, start the workflow by:
 ```bash
-$ mqc_runner.py --config config.yaml
+$ slurm_runner.py --config config.yaml
 ```
 
 ### Output Schema

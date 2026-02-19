@@ -1,36 +1,36 @@
 """
-Cmdline utility for interacting with Wasabi S3 storage.
+Cmdline utility for interacting with S3 storage.
 
-To start, first set the environment variables for Wasabi access:
+To start, first set the environment variables for S3 access:
 ```bash
-export WASABI_ACCESS_KEY="your_access_key"
-export WASABI_SECRET_KEY="your_secret_key"
+export S3_ACCESS_KEY="your_access_key"
+export S3_SECRET_KEY="your_secret_key"
 ```
 
 Usage:
 - List all buckets:
-    $ python wasabi_util.py --ls-buckets
+    $ python s3_util.py --ls-buckets
 
 - List objects in the specified bucket:
-    $ python wasabi_util.py --ls-objects <bucket_name>
+    $ python s3_util.py --ls-objects <bucket_name>
 
 - Upload a file to a bucket:
-    $ python wasabi_util.py --upload <local_file> <bucket_name> <remote_path>
+    $ python s3_util.py --upload <local_file> <bucket_name> <remote_path>
 
 - Download a file from a bucket:
-    $ python wasabi_util.py --download <bucket_name> <remote_path>
+    $ python s3_util.py --download <bucket_name> <remote_path>
 
 - Upload files from a CSV file:
-    $ python wasabi_util.py --upload-from-csv <csv_file>
+    $ python s3_util.py --upload-from-csv <csv_file>
     Each row should contain BUCKET_NAME, LOCAL_FILE_PATH, REMOTE_PATH in order.
     Example row:
-    materials-development, input.parq, remote_input.parquet
+    example-bucket, input.parq, remote_input.parquet
 
 - Download files from a CSV file:
-    $ python wasabi_util.py --download-from-csv <csv_file>
+    $ python s3_util.py --download-from-csv <csv_file>
     Each row should contain BUCKET_NAME, REMOTE_PATH in order.
     Example row:
-    snowflake-staging, MUPT1/part_0.parquet
+    example-bucket, mqc/data_0.parquet
 """
 import os
 import argparse
@@ -42,23 +42,21 @@ import polars
 import boto3
 from botocore.exceptions import ClientError
 
-wasabi_access_key = os.getenv('WASABI_ACCESS_KEY')
-wasabi_secret_key = os.getenv('WASABI_SECRET_KEY')
+s3_access_key = os.getenv('S3_ACCESS_KEY')
+s3_secret_key = os.getenv('S3_SECRET_KEY')
+endpoint_url = os.getenv('S3_ENDPOINT_URL')
+region_name = os.getenv('S3_REGION_NAME')
 
-if wasabi_access_key is None or wasabi_secret_key is None:
+if s3_access_key is None or s3_secret_key is None:
     raise SystemExit(
-        "Environment variables 'WASABI_ACCESS_KEY' and 'WASABI_SECRET_KEY' not found. "
+        "Environment variables 'S3_ACCESS_KEY' and 'S3_SECRET_KEY' not found. "
         "Please set them in your environment or .bashrc file.")
 
 s3_client = boto3.client('s3',
-                         endpoint_url='https://s3.wasabisys.com',
-                         aws_access_key_id=wasabi_access_key,
-                         aws_secret_access_key=wasabi_secret_key,
-                         region_name='us-east-1')
-# Current Buckets:
-# - materials-development
-# - sesai
-# - snowflake-staging
+                         endpoint_url=endpoint_url,
+                         aws_access_key_id=s3_access_key,
+                         aws_secret_access_key=s3_secret_key,
+                         region_name=region_name)
 
 
 def get_human_readable_size(size_bytes) -> str:
@@ -123,7 +121,7 @@ def upload_one_file(local_file_path: str,
                     bucket_name: str,
                     object_key: str | None = None) -> None:
     """
-    Upload a file to Wasabi S3 bucket.
+    Upload a file to S3 bucket.
 
     :param local_file_path: Path to the local file to upload
     :param bucket_name: Name of the destination bucket
@@ -156,7 +154,7 @@ def download_one_file(bucket_name: str,
                       object_key: str,
                       local_file_path: Path | None = None) -> None:
     """
-    Download a file from Wasabi S3 bucket.
+    Download a file from S3 bucket.
 
     :param bucket_name: Name of the source bucket
     :param object_key: Key (path) of the object in the bucket

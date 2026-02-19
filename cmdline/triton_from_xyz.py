@@ -3,6 +3,10 @@ Cmdline utility to read XYZs from a CSV/Parquet file, run molecular geometry
 optimization via Triton inference server and subsequent property calculations
 using extended AIMNET2 model.
 
+This script is specifically designed for processing batches of molecules and
+running on SLURM HPC clusters. It automatically distributes input molecules
+across multiple SLURM jobs and Triton server nodes for parallel batch processing.
+
 The input CSV/Parquet file must contain two columns: 'smiles' and 'xyz_block'.
 """
 import os
