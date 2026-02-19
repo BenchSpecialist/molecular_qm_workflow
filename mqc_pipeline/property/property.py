@@ -1,3 +1,4 @@
+import os
 import time
 import json
 import numpy as np
@@ -88,19 +89,13 @@ def get_thermo_info(mf_obj, unique_id: str = ''):
     return thermo_info
 
 
-@lru_cache(maxsize=1)
-def _import_polarizability():
-    from gpu4pyscf.properties import polarizability
-    return polarizability
-
-
 def get_isotropic_polarizability(mf_obj) -> float:
     if not _is_scf_done(mf_obj):
         raise RuntimeError(
             "Polarizability: No SCF calculation performed. Please run SCF first."
         )
 
-    polarizability = _import_polarizability()
+    from gpu4pyscf.properties import polarizability
     # Get the full 3x3 polarizability tensor
     alpha_tensor = polarizability.eval_polarizability(mf_obj)
     # Isotropic averaging
@@ -231,14 +226,16 @@ def get_properties_main(st: Structure,
     # CHELPG charges calculations are GPU-only
     if return_chelpg_chg:
         chelpg = _import_chelpg()
-        try:
-            # Evaluate CHELPG charges: this method fits atomic charges to reproduce
-            # ESP at a number of points around the molecule.
-            st.atom_property[CHELPG_CHARGE_KEY], st.metadata[
-                'dft_chelpg_time'] = timeit(
-                    lambda mf: chelpg.eval_chelpg_layer_gpu(mf).get(), mf=mf)
-        except Exception as e:
-            logger.error(f"{st.smiles} (id={st.unique_id}): {str(e)}")
+        if chelpg is not None:
+            try:
+                # Evaluate CHELPG charges: this method fits atomic charges to reproduce
+                # ESP at a number of points around the molecule.
+                st.atom_property[CHELPG_CHARGE_KEY], st.metadata[
+                    'dft_chelpg_time'] = timeit(
+                        lambda mf: chelpg.eval_chelpg_layer_gpu(mf).get(),
+                        mf=mf)
+            except Exception as e:
+                logger.error(f"{st.smiles} (id={st.unique_id}): {str(e)}")
 
     # Currently, the total electronic energy is used to approximate the enthalpy
     if return_combustion_heat:
@@ -270,22 +267,30 @@ def get_properties_main(st: Structure,
             mf, rdm1)
 
     if return_volume:
-        st.property['vdw_volume_angstrom3'], st.metadata[
-            'dft_vdw_volume_time'] = timeit(get_vdw_volume,
-                                            coords_angstrom=mol.atom_coords(),
-                                            atomic_numbers=mol.atom_charges(),
-                                            use_gpu=True)
-
-    if return_polarizability and st.multiplicity == 1:
-        # Backend function only supports closed-shell systems
         try:
-            st.property['alpha_iso_au'], st.metadata[
-                'dft_polarizability_time'] = timeit(
-                    get_isotropic_polarizability, mf)
+            st.property['vdw_volume_angstrom3'], st.metadata[
+                'dft_vdw_volume_time'] = timeit(
+                    get_vdw_volume,
+                    coords_angstrom=mol.atom_coords(),
+                    atomic_numbers=mol.atom_charges(),
+                    use_gpu=os.environ.get('CUPY_AVAILABLE') == 'True')
         except Exception as e:
             logger.error(
-                f"{st.smiles} (id={st.unique_id}): Failed to get isotropic polarizability: {str(e)}"
-            )
+                f"{st.smiles} (id={st.unique_id}): get_vdw_volume - {str(e)}")
+
+    if return_polarizability:
+        if os.environ.get('CUPY_AVAILABLE') != 'True':
+            logger.warning("Polarizability calculation is GPU-only.")
+        elif st.multiplicity != 1:
+            logger.warning(
+                "Polarizability: only supported for closed-shell systems.")
+        else:
+            try:
+                st.property['alpha_iso_au'], st.metadata[
+                    'dft_polarizability_time'] = timeit(
+                        get_isotropic_polarizability, mf)
+            except Exception as e:
+                logger.error(f"Error in polarizability calculation: {str(e)}")
 
     if return_fluoride_bde and 'F' in st.elements and st.charge > 0:
         logger.debug(
