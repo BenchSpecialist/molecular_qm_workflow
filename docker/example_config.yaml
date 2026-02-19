@@ -1,0 +1,78 @@
+# Path to a txt/csv/pkl file that contains smiles strings.
+# Alternatively, a directory containing multiple xyz files.
+input_file_or_dir: /workspace/smiles.txt
+
+# Type of inputs if a pkl file is given in `input_file_or_dir`.
+# Supported types: smiles, structure.
+pickled_input_type: smiles
+
+# Directory to save the output files.
+# Default to /workspace/output_dir for standard container volume mount.
+output_dir: /workspace/output_dir
+
+# Columnar file format to write molecule-level and atom-level properties for all input molecules.
+# Supported formats: csv, parquet. # Default is parquet for better performance with large batches.
+output_file_format: parquet
+
+# Whether to write single-molecule result to JSON file.
+write_json: False
+
+# Interval for logging progress during batch processing.
+progress_log_interval: 1
+
+# Additional DFT properties to compute.
+# Supported properties: combustion_heat, esp_range, chelpg_charges, forces, freq, vdw_volume, isotropic_polarizability, quadrupole, fluoride_bde
+# Total electronic energy, HOMO/LUMO, dipole moment are always returned.
+additional_properties: ['combustion_heat', 'esp_range', 'chelpg_charges', 'vdw_volume', 'isotropic_polarizability', 'quadrupole']
+
+# Method to convert SMILES to 3D structures.
+# Supported methods: rdkit, openbabel.
+smiles_to_3d_method: rdkit
+
+# Method for geometry optimization.
+# If set to `null` and use xyz inputs, geometry optimization is skipped.
+# Supported methods: AIMNET2, DFT.
+geometry_opt_method: AIMNET2
+
+# Name of the optimizer to use in ASE. Supported values: BFGS, FIRE
+ase_optimizer_name: BFGS
+
+# Convergence threshold for forces in ASE
+ase_force_conv: 1e-05
+
+# Maximum number of optimization cycles allowed in ASE
+ase_max_cycle: 1000
+
+# Basis set for PySCF calculations
+pyscf_basis: 6311g*
+
+# DFT functional for PySCF calculations
+pyscf_functional: b3lypg
+
+# Maximum number of SCF iterations allowed
+pyscf_max_scf_cycle: 100
+
+# SCF convergence tolerance
+pyscf_scf_conv_tol: 1e-09
+
+# Level of grid refinement for numerical integration
+pyscf_grids_level: 3
+
+# Whether to use solvent effects in PySCF calculations.
+# If True, uses default IEF-PCM with epsilon=20.0.
+# If tuple[str, float], the first element is the solvent method (e.g., 'IEF-PCM')
+# and the second element is the solvent dielectric constant (e.g., 20.0).
+pyscf_solvent: False
+
+# Dispersion correction method for PySCF calculations.
+# Example: 'd3bj' (Grimme's D3 dispersion with Becke-Johnson damping), 'd3zero', 'd4'.
+pyscf_dispersion: null
+
+# Solvent accessible region for ESP calculations in angstrom
+esp_solvent_accessible_region: 3.0
+
+# Grid spacing for ESP calculations in angstrom
+esp_grid_spacing: 0.5
+
+# Probe depth for ESP calculations in angstrom
+esp_probe_depth: 1.1
