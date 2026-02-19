@@ -520,9 +520,10 @@ class ContainerPipelineSettings(BaseSettings):
     """
     # Override output settings with container-friendly defaults
     output_dir: str = Field(
-        default="/data/output",
+        default="/workspace/output_dir",
         description="Directory to save the output files.\n"
-        "# Default to /data/output for standard container volume mount.")
+        "# Default to /workspace/output_dir for standard container volume mount."
+    )
 
     output_file_format: Literal["csv", "parquet", "parq"] = Field(
         default="parquet",

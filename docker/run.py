@@ -6,14 +6,15 @@ configuration, then executes the batch processing pipeline.
 
 Examples:
   # Using config file (config file contains input and output paths)
-  python run.py --config /data/config/config.yaml[json]
+  python run.py --config /workspace/config.yaml
 
   # Using direct input/output paths
-  python run.py --input /data/input/smiles.txt --output /data/output
+  python run.py --input /workspace/smiles.txt [--output /workspace/output_dir]
 
   # With XYZ directory input
-  python run.py --input /data/input/xyz_dir --output /data/output
+  python run.py --input /workspace/xyz_dir [--output /workspace/output_dir]
 """
+import os
 import sys
 import argparse
 from pathlib import Path
@@ -24,12 +25,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from mqc_pipeline.settings import ContainerPipelineSettings
 from mqc_pipeline.workflow.pipeline import run_one_batch
 from mqc_pipeline.workflow.io import read_smiles, read_xyz_dir
-from mqc_pipeline.util import get_default_logger, change_dir
+from mqc_pipeline.util import change_dir
 from mqc_pipeline.validate import validate_input
 
-logger = get_default_logger()
-
-_DEFAULT_OUTPUT_DIR = "/data/output"
+_DEFAULT_WORKSPACE_DIR = os.environ.get("WORKSPACE_DIR", "/workspace")
+_DEFAULT_OUTPUT_DIR = Path(_DEFAULT_WORKSPACE_DIR) / "output_dir"
 
 
 def parse_args():
@@ -80,7 +80,7 @@ def load_settings(config_path: str | None = None,
         config_path = Path(config_path)
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
-        logger.info(f"Loading configuration from {config_path}")
+        print(f"Loading configuration from {config_path}")
         settings = ContainerPipelineSettings.from_file(config_path)
         settings_dict = settings.model_dump()
     else:
@@ -96,10 +96,23 @@ def load_settings(config_path: str | None = None,
         raise ValueError(
             "Input path must be provided via --input or in config file")
 
+    # Check input path existence and update to the likely path if it exists
+    input_path = Path(settings_dict['input_file_or_dir'])
+    if not input_path.exists():
+        # try to find input in _DEFAULT_WORKSPACE_DIR
+        likely_input_path = Path(_DEFAULT_WORKSPACE_DIR) / input_path
+        if likely_input_path.exists():
+            # update input path to the likely path
+            settings_dict['input_file_or_dir'] = str(likely_input_path)
+        else:
+            raise FileNotFoundError(
+                f"Input path does not exist: {input_path}. "
+                "Ensure the input is mounted as a volume in the container.")
+
     try:
         settings = ContainerPipelineSettings(**settings_dict)
     except Exception as e:
-        logger.error(f"Failed to create settings: {e}")
+        print(f"Failed to create settings: {e}")
         raise
 
     return settings
@@ -107,29 +120,22 @@ def load_settings(config_path: str | None = None,
 
 def validate_input_path(input_path: str) -> None:
     """
-    Validate that input file or directory exists and is readable.
-
-    :param input_path: Path to input file or directory.
+    Validate the input file or directory.
     """
     input_path = Path(input_path)
-    if not input_path.exists():
-        raise FileNotFoundError(
-            f"Input path does not exist: {input_path}. "
-            "Ensure the input is mounted as a volume in the container.")
-
     if input_path.is_file():
         valid_extensions = {
             '.txt', '.csv', '.pkl', '.pickle', '.parquet', '.parq'
         }
         if input_path.suffix not in valid_extensions:
-            logger.warning(
+            print(
                 f"Input file extension '{input_path.suffix}' may not be supported. "
                 f"Supported: {', '.join(valid_extensions)}")
     elif input_path.is_dir():
         # Check if directory contains XYZ files
         xyz_files = list(input_path.glob('*.xyz'))
         if len(xyz_files) == 0:
-            logger.warning(f"No .xyz files found in directory: {input_path}")
+            print(f"No .xyz files found in directory: {input_path}")
     else:
         raise ValueError(
             f"Input path is neither a file nor directory: {input_path}")
@@ -171,7 +177,7 @@ def main():
     if args.write_default_config:
         output_path = Path(args.write_default_config)
         ContainerPipelineSettings.write_default_config_to_yaml(output_path)
-        logger.info(f"Default configuration written to {output_path}")
+        print(f"Default configuration written to {output_path}")
         return 0
 
     try:
@@ -182,40 +188,39 @@ def main():
         validate_input_path(settings.input_file_or_dir)
 
         try:
-            validate_input(settings.input_file_or_dir,
-                           settings.pickled_input_type)
+            validate_input(settings.input_file_or_dir)
         except Exception as e:
-            logger.warning(f"Input validation warning: {e}")
+            print(f"Input validation warning: {e}")
 
         # Ensure output directory exists
         output_dir = Path(settings.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Output directory: {output_dir}")
+        print(f"Output directory: {output_dir}")
 
         # Read inputs
-        logger.info(f"Reading inputs from: {settings.input_file_or_dir}")
+        print(f"Reading inputs from: {settings.input_file_or_dir}")
         inputs = read_inputs(settings.input_file_or_dir,
                              settings.pickled_input_type)
 
         if len(inputs) == 0:
-            logger.error("No inputs found. Exiting.")
+            print("No inputs found. Exiting.")
             return 1
 
-        logger.info(f"Loaded {len(inputs)} input molecules")
+        print(f"Loaded {len(inputs)} input molecules")
 
-        # Change to output directory for processing
+        # Create and change to output directory for processing
         # run_one_batch writes files to current working directory
         with change_dir(str(output_dir)):
             run_one_batch(inputs, settings)
 
-        logger.info("Pipeline completed successfully")
+        print("Pipeline completed. Check the output directory for results.")
         return 0
 
     except KeyboardInterrupt:
-        logger.warning("Pipeline interrupted by user")
+        print("Pipeline interrupted by user")
         return 130
     except Exception as e:
-        logger.error(f"Pipeline failed: {e}", exc_info=True)
+        print(f"Pipeline failed: {e}", exc_info=True)
         return 1
 
 
