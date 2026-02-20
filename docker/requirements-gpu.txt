@@ -1,0 +1,22 @@
+# GPU-specific dependencies for MQC Pipeline
+# These are installed in addition to base requirements.txt
+
+# CUDA-enabled PyTorch (CUDA 12.4)
+# Install from PyTorch index for CUDA support
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch>=2.4.0,<3.0
+torchvision>=0.19.0
+torchaudio>=2.4.0
+
+# GPU-accelerated PySCF
+gpu4pyscf-cuda12x>=1.5.0
+
+# CuPy for GPU array operations (CUDA 12.x)
+cupy-cuda12x>=13.6.0
+
+# cuTENSOR for tensor operations
+cutensor-cu12>=2.4.1
+
+# Note: torch-cluster and numba are already in base requirements.txt
+# and work with both CPU and GPU versions of PyTorch
+
