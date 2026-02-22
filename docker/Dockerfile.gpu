@@ -1,0 +1,155 @@
+# ==========================================
+# Stage 0: PyTorch Dependencies (Most Stable - Cached Longest)
+# ==========================================
+FROM nvidia/cuda:12.4.0-devel-ubuntu22.04 AS pytorch-deps
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+
+# Install Python 3.11 and minimal build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-dev \
+    python3-pip \
+    python3.11-distutils \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create symlinks for python and pip (idempotent)
+RUN ln -sf /usr/bin/python3.11 /usr/bin/python && \
+    ln -sf /usr/bin/python3.11 /usr/bin/python3
+
+# Upgrade pip
+RUN pip install --no-cache-dir --upgrade pip
+
+# Install PyTorch with CUDA support (this layer is cached independently and rarely changes)
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cu124 \
+    "torch>=2.4.0,<3.0" "torchvision>=0.19.0" "torchaudio>=2.4.0"
+
+# Install torch-cluster (this layer is cached independently and rarely changes)
+# Only rebuilds if torch version changes
+RUN pip install --no-cache-dir --no-build-isolation "torch-cluster>=1.6.0"
+
+# Stage torch packages for copying to builder stage
+# Copy from both possible locations (dist-packages and site-packages)
+RUN mkdir -p /tmp/pytorch-packages && \
+    (cp -r /usr/local/lib/python3.11/dist-packages/torch* /tmp/pytorch-packages/ 2>/dev/null || true) && \
+    (cp -r /usr/local/lib/python3.11/dist-packages/torch_cluster* /tmp/pytorch-packages/ 2>/dev/null || true) && \
+    (cp -r /usr/local/lib/python3.11/site-packages/torch* /tmp/pytorch-packages/ 2>/dev/null || true) && \
+    (cp -r /usr/local/lib/python3.11/site-packages/torch_cluster* /tmp/pytorch-packages/ 2>/dev/null || true)
+
+
+# ==========================================
+# Stage 1: Builder (Compilers & Tools)
+# ==========================================
+FROM nvidia/cuda:12.4.0-devel-ubuntu22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+
+WORKDIR /app
+
+# Install Python 3.11 and build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-dev \
+    python3-pip \
+    python3.11-distutils \
+    build-essential \
+    cmake \
+    libeigen3-dev \
+    libboost-all-dev \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libpangocairo-1.0-0 \
+    libffi-dev \
+    shared-mime-info \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create symlinks for python and pip
+RUN ln -sf /usr/bin/python3.11 /usr/bin/python && \
+    ln -sf /usr/bin/python3.11 /usr/bin/python3
+
+# Upgrade pip
+RUN pip install --no-cache-dir --upgrade pip
+
+# Copy torch and torch-cluster from pytorch-deps stage (avoids rebuilding)
+RUN mkdir -p /usr/local/lib/python3.11/dist-packages /usr/local/lib/python3.11/site-packages
+COPY --from=pytorch-deps /tmp/pytorch-packages/ /usr/local/lib/python3.11/dist-packages/
+
+# Copy requirements files (this invalidates cache only when these files change)
+COPY requirements.txt /app/requirements.txt
+COPY docker/requirements-gpu.txt /app/requirements-gpu.txt
+
+# Install remaining base Python dependencies (cached separately - invalidates when requirements.txt changes)
+RUN grep -v "^torch-cluster" requirements.txt | grep -v "^torch>=" > /tmp/requirements_no_torch.txt && \
+    pip install --no-cache-dir -r /tmp/requirements_no_torch.txt
+
+# Install remaining GPU-specific dependencies (cached separately - invalidates when requirements-gpu.txt changes)
+# Filter out torch packages that are already installed
+RUN grep -v "^torch>=" requirements-gpu.txt | grep -v "^torchvision>=" | grep -v "^torchaudio>=" > /tmp/requirements_gpu_no_torch.txt && \
+    pip install --no-cache-dir -r /tmp/requirements_gpu_no_torch.txt
+
+# Copy the entire project
+COPY . /app/
+
+# Install mqc_pipeline package
+RUN pip install --no-cache-dir -e .
+
+# Stage Python packages to a known location for copying to runtime
+# Packages may be in dist-packages (Ubuntu system Python) or site-packages
+RUN mkdir -p /app/staged-packages && \
+    if [ -d /usr/local/lib/python3.11/dist-packages ] && [ "$(ls -A /usr/local/lib/python3.11/dist-packages)" ]; then \
+        cp -r /usr/local/lib/python3.11/dist-packages/* /app/staged-packages/; \
+    fi && \
+    if [ -d /usr/local/lib/python3.11/site-packages ] && [ "$(ls -A /usr/local/lib/python3.11/site-packages)" ]; then \
+        cp -r /usr/local/lib/python3.11/site-packages/* /app/staged-packages/; \
+    fi
+
+
+# ==========================================
+# Stage 2: Runtime (Final Image)
+# ==========================================
+# Use cudnn-devel so all CUDA libs used by torch._C are present (cuDNN, cuSPARSELt, etc.); larger image but no missing-lib surprises
+FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+
+WORKDIR /app
+
+# Install Python 3.11 and runtime system dependencies (no build tools)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3-pip \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libffi8 \
+    shared-mime-info \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create symlinks for python and pip
+RUN ln -sf /usr/bin/python3.11 /usr/bin/python && \
+    ln -sf /usr/bin/python3.11 /usr/bin/python3
+
+# Copy installed Python packages from builder staging area
+# Python will check both dist-packages and site-packages, so we can use either
+RUN mkdir -p /usr/local/lib/python3.11/dist-packages
+COPY --from=builder /app/staged-packages /usr/local/lib/python3.11/dist-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy the application source code
+COPY . /app/
+
+ENV PYTHONPATH=/app
+ENV WORKSPACE_DIR=/workspace
+
+# Default command (can be overridden)
+CMD ["/bin/bash"]
